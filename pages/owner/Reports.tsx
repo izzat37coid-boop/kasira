@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import Layout from '../../components/Layout';
-import { User, Transaction, FinancialStats, Branch, Product } from '../../types';
+import { User, Transaction, FinancialStats, Branch } from '../../types';
 import { api } from '../../services/api';
 import { realtime } from '../../services/realtime';
 import { 
@@ -10,7 +10,6 @@ import {
   CheckCircle, 
   Search, 
   Store,
-  RefreshCw,
   TrendingUp,
   Zap,
   ChevronDown,
@@ -88,11 +87,11 @@ const OwnerReports: React.FC<Props> = ({ user, onLogout }) => {
       setStats(newStats);
 
       const dailyMap: Record<string, any> = {};
-      transactions.forEach(t => {
+      transactions.forEach((t: Transaction) => {
         const day = new Date(t.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
         if (!dailyMap[day]) dailyMap[day] = { name: day, revenue: 0, profit: 0 };
         dailyMap[day].revenue += t.subtotal;
-        dailyMap[day].profit += (t.subtotal - t.items.reduce((acc, i) => acc + (i.cost_snapshot * i.quantity), 0) - t.discount);
+        dailyMap[day].profit += (t.subtotal - t.items.reduce((acc: number, i: any) => acc + (i.cost_snapshot * i.quantity), 0) - t.discount);
       });
       setChartData(Object.values(dailyMap));
     } catch (err) {
@@ -104,8 +103,8 @@ const OwnerReports: React.FC<Props> = ({ user, onLogout }) => {
 
   const handleExport = () => {
     const headers = ['Invoice', 'Tanggal', 'Revenue', 'HPP', 'Diskon', 'Laba Bersih', 'Tax(PPN)'];
-    const rows = txs.map(t => {
-      const hpp = t.items.reduce((acc, i) => acc + (i.cost_snapshot * i.quantity), 0);
+    const rows = txs.map((t: Transaction) => {
+      const hpp = t.items.reduce((acc: number, i: any) => acc + (i.cost_snapshot * i.quantity), 0);
       return [t.id, t.date, t.subtotal, hpp, t.discount, (t.subtotal - hpp - t.discount), t.tax];
     });
     const csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" + rows.map(e => e.join(",")).join("\n");
@@ -127,7 +126,6 @@ const OwnerReports: React.FC<Props> = ({ user, onLogout }) => {
         </button>
       </div>
 
-      {/* Control Panel */}
       <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm mb-10 flex flex-col lg:flex-row gap-8">
         <div className="flex-1">
            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3 ml-1">Periode</p>
@@ -158,7 +156,6 @@ const OwnerReports: React.FC<Props> = ({ user, onLogout }) => {
         </div>
       </div>
 
-      {/* Main Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
         <div className="p-8 bg-white border border-slate-100 rounded-[2.5rem] shadow-sm">
            <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mb-6">
@@ -193,7 +190,6 @@ const OwnerReports: React.FC<Props> = ({ user, onLogout }) => {
         </div>
       </div>
 
-      {/* Chart Section */}
       <div className="bg-slate-950 p-10 rounded-[3rem] shadow-2xl mb-12 relative overflow-hidden border border-slate-900">
         <div className="absolute top-0 right-0 p-10 opacity-5">
            <Activity size={150} />
@@ -229,7 +225,6 @@ const OwnerReports: React.FC<Props> = ({ user, onLogout }) => {
         </div>
       </div>
 
-      {/* Audit Reconciliation */}
       <div className="bg-white rounded-[3rem] border border-slate-100 shadow-sm overflow-hidden mb-12">
         <div className="p-8 border-b border-slate-50 bg-slate-50/50 flex justify-between items-center">
            <h3 className="text-lg font-black text-slate-800 uppercase italic">Log Transaksi & Audit</h3>
@@ -252,8 +247,8 @@ const OwnerReports: React.FC<Props> = ({ user, onLogout }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {txs.filter(t => t.id.toLowerCase().includes(searchQuery.toLowerCase())).map((t) => {
-                const hpp = t.items.reduce((acc, i) => acc + (i.cost_snapshot * i.quantity), 0);
+              {txs.filter((t: Transaction) => t.id.toLowerCase().includes(searchQuery.toLowerCase())).map((t: Transaction) => {
+                const hpp = t.items.reduce((acc: number, i: any) => acc + (i.cost_snapshot * i.quantity), 0);
                 const labaBersih = t.subtotal - hpp - t.discount;
                 return (
                   <tr key={t.id} className="hover:bg-blue-50/20 transition group">

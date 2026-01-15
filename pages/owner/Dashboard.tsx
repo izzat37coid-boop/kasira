@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import Layout from '../../components/Layout';
 import { User, FinancialStats, Transaction, BranchPerformance, Product } from '../../types';
 import { api } from '../../services/api';
@@ -14,7 +14,6 @@ import {
   BrainCircuit,
   Lightbulb,
   Clock,
-  ArrowRight,
   Activity
 } from 'lucide-react';
 import { 
@@ -53,7 +52,6 @@ const TypewriterText: React.FC<{ text: string }> = ({ text }) => {
 
 const OwnerDashboard: React.FC<Props> = ({ user, onLogout }) => {
   const [loading, setLoading] = useState(true);
-  // Fixed initialization to include all required fields of FinancialStats interface
   const [stats, setStats] = useState<FinancialStats>({ 
     revenue: 0, 
     cogs: 0, 
@@ -75,7 +73,6 @@ const OwnerDashboard: React.FC<Props> = ({ user, onLogout }) => {
 
     const ownerChannel = realtime.privateChannel(`owner.${user.id}`);
     ownerChannel.listen('TransactionCreated', (tx: Transaction) => {
-      // Fixed setStats update logic to calculate and include all required FinancialStats fields
       setStats(prev => {
         const itemCogs = tx.items.reduce((acc, i) => acc + (i.cost_snapshot * i.quantity), 0);
         const newRevenue = prev.revenue + tx.subtotal;
@@ -95,7 +92,6 @@ const OwnerDashboard: React.FC<Props> = ({ user, onLogout }) => {
           orderCount: prev.orderCount + 1
         };
       });
-      // Silent refresh for the chart to keep it real-time
       fetchData(false);
     });
 
@@ -126,8 +122,8 @@ const OwnerDashboard: React.FC<Props> = ({ user, onLogout }) => {
     setProducts(prods);
     setBranchPerf(perf);
 
-    const dailyData: any = {};
-    report.transactions.forEach(t => {
+    const dailyData: Record<string, number> = {};
+    report.transactions.forEach((t: Transaction) => {
       const day = new Date(t.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
       dailyData[day] = (dailyData[day] || 0) + t.total;
     });
@@ -144,13 +140,12 @@ const OwnerDashboard: React.FC<Props> = ({ user, onLogout }) => {
       branches: branchPerf,
       period: filterType === '7d' ? '7 Hari Terakhir' : (filterType === '30d' ? '1 Bulan Terakhir' : '1 Tahun Terakhir')
     });
-    setAiInsight(insight);
+    setAiInsight(insight || null);
     setAiLoading(false);
   };
 
   return (
     <Layout user={user} onLogout={onLogout}>
-      {/* Header Section */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-6">
         <div>
           <div className="flex items-center gap-3 mb-1">
@@ -176,7 +171,6 @@ const OwnerDashboard: React.FC<Props> = ({ user, onLogout }) => {
         </div>
       </div>
 
-      {/* Primary Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
         {[
           { label: 'Total Penjualan', value: stats.revenue, icon: ShoppingBag, color: 'blue' },
@@ -198,7 +192,6 @@ const OwnerDashboard: React.FC<Props> = ({ user, onLogout }) => {
         ))}
       </div>
 
-      {/* AI Business Consultant Panel */}
       <div className="group relative overflow-hidden bg-slate-900 rounded-[3rem] mb-10 shadow-2xl shadow-blue-500/20 border border-white/5 p-1">
          <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 rounded-[3rem] blur opacity-25 group-hover:opacity-40 transition duration-1000 group-hover:duration-200 animate-pulse"></div>
          
@@ -265,7 +258,6 @@ const OwnerDashboard: React.FC<Props> = ({ user, onLogout }) => {
          </div>
       </div>
 
-      {/* Grafik Penjualan Real-time Section */}
       <div className="bg-white p-8 md:p-10 rounded-[2.5rem] border border-slate-100 shadow-sm">
         <div className="flex justify-between items-center mb-10">
            <div className="flex items-center gap-3">

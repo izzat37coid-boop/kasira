@@ -1,5 +1,5 @@
 
-import { User, Role, Branch, Product, Transaction, FinancialStats, Category, BranchPerformance, AccountStatus, PaymentStatus, PaymentRecord } from '../types';
+import { User, Role, Branch, Product, Transaction, Category, BranchPerformance, AccountStatus, PaymentStatus, PaymentRecord, TransactionItem } from '../types';
 import { realtime } from './realtime';
 import { GoogleGenAI } from "@google/genai";
 
@@ -67,7 +67,6 @@ export const api = {
     return user || null;
   },
 
-  // Fix: Added registerTrial method for demo mode
   registerTrial: async (data: any): Promise<User> => {
     const newUser: User = {
       id: uuid(),
@@ -84,7 +83,6 @@ export const api = {
     return newUser;
   },
 
-  // Fix: Added initiateRegistration method for demo mode
   initiateRegistration: async (data: any): Promise<PaymentRecord> => {
     const amount = data.package === 'Pro' ? 199000 : 1900000;
     const payment: PaymentRecord = {
@@ -94,13 +92,10 @@ export const api = {
       qrisUrl: `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=PAY-${uuid()}`,
       status: 'pending'
     };
-    // In a real app, we'd store this or send it to Midtrans
     return payment;
   },
 
-  // Fix: Added handleRegistrationCallback method for demo mode
   handleRegistrationCallback: async (orderId: string, status: 'paid' | 'failed'): Promise<User | null> => {
-    // In demo mode, we'll just return the last created user or a dummy one
     const user = users[users.length - 1];
     if (user && status === 'paid') {
       user.status = AccountStatus.ACTIVE;
@@ -127,7 +122,6 @@ export const api = {
     return newBranch;
   },
 
-  // Fix: Added deleteBranch method for demo mode
   deleteBranch: async (id: string, role: Role) => {
     if (role !== Role.OWNER) throw new Error("Unauthorized");
     const branches = load('branches', []);
@@ -146,7 +140,6 @@ export const api = {
     return p;
   },
 
-  // Fix: Added getCategories method for demo mode
   getCategories: async (): Promise<Category[]> => {
     return load('categories', [
       { id: 'c1', name: 'Makanan', branchId: 'all' },
@@ -170,7 +163,6 @@ export const api = {
     return newProduct;
   },
 
-  // Fix: Added updateProduct method for demo mode
   updateProduct: async (id: string, data: any, role: Role) => {
     if (role !== Role.OWNER) throw new Error("Unauthorized");
     const products = load('products', []);
@@ -182,7 +174,6 @@ export const api = {
     return products[idx];
   },
 
-  // Fix: Added deleteProduct method for demo mode
   deleteProduct: async (id: string, role: Role) => {
     if (role !== Role.OWNER) throw new Error("Unauthorized");
     const products = load('products', []);
@@ -194,12 +185,10 @@ export const api = {
   /**
    * STAFF MANAGEMENT
    */
-  // Fix: Added getStaff method for demo mode
   getStaff: async (ownerId: string): Promise<User[]> => {
     return users.filter(u => u.role === Role.KASIR);
   },
 
-  // Fix: Added addStaff method for demo mode
   addStaff: async (data: any) => {
     const newStaff: User = {
       id: uuid(),
@@ -213,7 +202,6 @@ export const api = {
     return newStaff;
   },
 
-  // Fix: Added deleteStaff method for demo mode
   deleteStaff: async (id: string, role: Role) => {
     if (role !== Role.OWNER) throw new Error("Unauthorized");
     users = users.filter(u => u.id !== id);
@@ -224,7 +212,6 @@ export const api = {
   /**
    * TRANSACTION & POS
    */
-  // Fix: Added getTransactions method for demo mode
   getTransactions: async (branchId: string): Promise<Transaction[]> => {
     const tx = load('transactions', []);
     return tx.filter((t: Transaction) => t.branchId === branchId);
@@ -233,7 +220,6 @@ export const api = {
   createTransaction: async (data: any): Promise<Transaction> => {
     if (IS_PRODUCTION) return request('/transactions', { method: 'POST', body: JSON.stringify(data) });
     
-    // Demo Logic: Update Stock Local
     const products = load('products', []);
     const transactions = load('transactions', []);
     
@@ -261,7 +247,6 @@ export const api = {
     };
     newTx.total = newTx.subtotal + newTx.tax - newTx.discount;
 
-    // Simulate Midtrans URL for Demo
     if (data.paymentMethod === 'QRIS') {
       newTx.paymentDetails = { qris_url: `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=KASIRA-${newTx.id}` };
     }
@@ -269,13 +254,11 @@ export const api = {
     transactions.push(newTx);
     save('transactions', transactions);
     
-    // Realtime broadcast simulation
     realtime.broadcast(`owner.${users.find(u => u.role === Role.OWNER)?.id}`, 'TransactionCreated', newTx);
     
     return newTx;
   },
 
-  // Fix: Added simulateMidtransCallback method for demo mode
   simulateMidtransCallback: async (transactionId: string, status: PaymentStatus) => {
     const transactions = load('transactions', []);
     const tx = transactions.find((t: Transaction) => t.id === transactionId);
@@ -289,7 +272,6 @@ export const api = {
   /**
    * STOCK MANAGEMENT
    */
-  // Fix: Added adjustStock method for demo mode
   adjustStock: async (productId: string, amount: number, note: string) => {
     const products = load('products', []);
     const p = products.find((prod: Product) => prod.id === productId);
@@ -305,7 +287,7 @@ export const api = {
    * AI ANALYSIS (GEMINI 3 PRO)
    */
   getAIAnalysis: async (data: any) => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
     const prompt = `Analisis data bisnis POS ini: 
       Omzet: Rp${data.stats.revenue.toLocaleString()}, 
       Laba: Rp${data.stats.netProfit.toLocaleString()}, 
@@ -323,7 +305,6 @@ export const api = {
     }
   },
 
-  // Fallback methods for reports
   getFinancialReport: async (filters: any) => {
     if (IS_PRODUCTION) return request('/reports/financial', { method: 'POST', body: JSON.stringify(filters) });
     
@@ -334,7 +315,7 @@ export const api = {
     });
 
     const stats = tx.reduce((acc: any, t: Transaction) => {
-      const cogs = t.items.reduce((sum, item) => sum + (item.cost_snapshot * item.quantity), 0);
+      const cogs = t.items.reduce((sum: number, item: TransactionItem) => sum + (item.cost_snapshot * item.quantity), 0);
       acc.revenue += t.subtotal;
       acc.cogs += cogs;
       acc.totalDiscount += t.discount;
@@ -349,7 +330,6 @@ export const api = {
     return { transactions: tx, stats };
   },
 
-  // Fix: Updated getBranchComparison signature to accept date range
   getBranchComparison: async (ownerId: string, startDate?: string, endDate?: string): Promise<BranchPerformance[]> => {
     if (IS_PRODUCTION) return request(`/reports/branches?owner_id=${ownerId}`);
     
@@ -359,10 +339,10 @@ export const api = {
       return t.status === 'success' && isDateMatch;
     });
 
-    return branches.map(b => {
-      const branchTxs = allTxs.filter(t => t.branchId === b.id);
-      const stats = branchTxs.reduce((acc, t) => {
-        const cogs = t.items.reduce((sum, item) => sum + (item.cost_snapshot * item.quantity), 0);
+    return branches.map((b: Branch) => {
+      const branchTxs = allTxs.filter((t: Transaction) => t.branchId === b.id);
+      const stats = branchTxs.reduce((acc: any, t: Transaction) => {
+        const cogs = t.items.reduce((sum: number, item: TransactionItem) => sum + (item.cost_snapshot * item.quantity), 0);
         acc.revenue += t.subtotal;
         acc.cogs += cogs;
         acc.orderCount += 1;
@@ -375,7 +355,7 @@ export const api = {
         branchId: b.id,
         branchName: b.name,
         grossProfit: stats.revenue - stats.cogs,
-        totalDiscount: 0, // Simplified for comparison
+        totalDiscount: 0,
         totalTax: 0,
         bestSeller: 'Menu Favorit',
         trend: Math.random() > 0.5 ? 'up' : 'down'
