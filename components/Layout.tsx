@@ -1,5 +1,4 @@
 
-// Fix: Added missing React import to resolve namespace errors
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { 
@@ -11,9 +10,11 @@ import {
   LogOut, 
   ShoppingCart, 
   History,
-  Archive
+  Archive,
+  Database
 } from 'lucide-react';
 import { User, Role } from '../types';
+import { isDbConfigured } from '../services/supabase';
 
 interface LayoutProps {
   user: User;
@@ -42,16 +43,25 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout, children }) => {
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden font-sans">
-      {/* Sidebar */}
       <aside className="w-72 bg-slate-900 text-white flex flex-col hidden md:flex">
         <div className="p-8">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center font-bold text-xl italic">K</div>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center font-bold text-xl italic shadow-lg shadow-blue-600/20">K</div>
             <h1 className="text-2xl font-bold tracking-tight">KASIRA</h1>
           </div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/5 border border-white/10 rounded-full">
-            <div className={`w-2 h-2 rounded-full ${user.role === Role.OWNER ? 'bg-blue-400' : 'bg-emerald-400'}`}></div>
-            <span className="text-[10px] text-white/50 font-semibold uppercase tracking-wider">{user.role}</span>
+          
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/5 border border-white/10 rounded-full w-full">
+              <div className={`w-2 h-2 rounded-full ${user.role === Role.OWNER ? 'bg-blue-400' : 'bg-emerald-400'}`}></div>
+              <span className="text-[10px] text-white/50 font-semibold uppercase tracking-wider">{user.role} Account</span>
+            </div>
+            
+            {!isDbConfigured && (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 border border-amber-500/20 rounded-xl w-full">
+                <Database size={12} className="text-amber-500" />
+                <span className="text-[9px] text-amber-500 font-black uppercase tracking-widest">Offline Demo</span>
+              </div>
+            )}
           </div>
         </div>
         
@@ -69,7 +79,7 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout, children }) => {
                     : 'text-slate-400 hover:text-white hover:bg-white/5'
                 }`}
               >
-                <Icon size={20} className={isActive ? 'scale-110 transition-transform' : 'group-hover:scale-110 transition-transform'} />
+                <Icon size={20} className={isActive ? 'scale-110' : 'group-hover:scale-110 transition-transform'} />
                 <span className="font-medium text-sm">{link.label}</span>
               </Link>
             );
@@ -87,7 +97,6 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout, children }) => {
         </div>
       </aside>
 
-      {/* Main Content */}
       <main className="flex-1 overflow-y-auto bg-[#F8FAFC]">
         <header className="bg-white/80 backdrop-blur-md border-b border-gray-100 py-4 px-10 flex justify-between items-center sticky top-0 z-40">
           <div>
@@ -95,15 +104,13 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout, children }) => {
               {user.role === Role.OWNER ? user.businessName : 'Cashier Terminal'}
             </h2>
             <div className="flex items-center gap-2 text-slate-400">
-               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
-               <p className="text-xs">Logged in as <span className="text-slate-600 font-medium">{user.name}</span></p>
+               <div className={`w-1.5 h-1.5 rounded-full ${isDbConfigured ? 'bg-emerald-500' : 'bg-amber-500'}`}></div>
+               <p className="text-xs">
+                 {isDbConfigured ? 'Connected to HQ' : 'Demo Local Instance'} • <span className="text-slate-600 font-medium">{user.name}</span>
+               </p>
             </div>
           </div>
           <div className="flex items-center gap-5">
-             <div className="text-right hidden sm:block">
-               <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">{new Date().toLocaleDateString('id-ID', { weekday: 'long' })}</p>
-               <p className="text-sm font-medium text-slate-800">{new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long' })}</p>
-             </div>
              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center font-bold text-lg shadow-lg shadow-blue-500/20">
                {user.name.charAt(0)}
              </div>

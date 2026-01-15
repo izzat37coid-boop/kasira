@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { User, Role, AccountStatus } from './types';
-import { supabase } from './services/supabase';
+import { supabase, isDbConfigured } from './services/supabase';
 import { api } from './services/api';
 import LandingPage from './pages/LandingPage';
 import Login from './pages/Login';
@@ -16,95 +16,80 @@ import OwnerReports from './pages/owner/Reports';
 import OwnerPerformance from './pages/owner/BranchComparison';
 import KasirPOS from './pages/kasir/POS';
 import KasirHistory from './pages/kasir/History';
+import { RefreshCw, Database } from 'lucide-react';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const checkSession = async () => {
+    const init = async () => {
+      if (!isDbConfigured) {
+        console.warn("KASIRA: Database environment not found. Running in DEMO MODE.");
+        setLoading(false);
+        return;
+      }
+
       try {
-        const { data } = await supabase.auth.getSession();
-        if (data?.session) {
-          const profileFound = await fetchProfile(data.session.user.id, data.session.user.email!);
-          if (!profileFound) {
-            console.warn("Sesi ditemukan tapi profil kosong. Membersihkan sesi...");
-            await handleLogout();
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          const { data: profile } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
+          if (profile) {
+            setUser({
+              id: profile.id,
+              name: profile.name,
+              email: session.user.email!,
+              role: profile.role as Role,
+              businessName: profile.business_name,
+              status: profile.status as AccountStatus,
+              packageType: profile.package_type,
+              expiredAt: profile.expired_at,
+              branchId: profile.branch_id
+            });
           }
-        } else {
-          setLoading(false);
         }
       } catch (e) {
+        console.error("Auth init error:", e);
+      } finally {
         setLoading(false);
       }
     };
 
-    checkSession();
+    init();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: string, session: any) => {
-      if (event === 'SIGNED_IN' && session) {
-        const profileFound = await fetchProfile(session.user.id, session.user.email!);
-        if (!profileFound) await handleLogout();
-      } else if (event === 'SIGNED_OUT') {
-        setUser(null);
-        setLoading(false);
-      }
-    });
-
-    return () => subscription.unsubscribe();
+    if (isDbConfigured) {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        if (event === 'SIGNED_OUT') {
+          setUser(null);
+        }
+      });
+      return () => subscription.unsubscribe();
+    }
   }, []);
 
-  const fetchProfile = async (id: string, email: string): Promise<boolean> => {
-    try {
-      const { data: profile, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', id)
-        .single();
-      
-      if (error || !profile) {
-        return false;
-      }
-      
-      setUser({
-        id: profile.id,
-        name: profile.name,
-        email: email,
-        role: profile.role as Role,
-        businessName: profile.business_name,
-        status: profile.status as AccountStatus,
-        packageType: profile.package_type,
-        expiredAt: profile.expired_at,
-        branchId: profile.branch_id
-      });
-      return true;
-    } catch (e) {
-      return false;
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    if (isDbConfigured) await supabase.auth.signOut();
     localStorage.clear(); 
     setUser(null);
-    setLoading(false);
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-white/50 font-bold uppercase tracking-widest text-[10px]">Sinkronisasi Data KASIRA...</p>
-        </div>
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-center font-sans">
+        <div className="w-16 h-16 border-4 border-blue-600/20 border-t-blue-600 rounded-full animate-spin mb-6"></div>
+        <h2 className="text-white font-black uppercase tracking-[0.3em] text-[10px] mb-2">Sinkronisasi Kasira</h2>
+        <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest animate-pulse">Menghubungkan Terminal...</p>
       </div>
     );
   }
 
   return (
     <HashRouter>
+      {!isDbConfigured && (
+        <div className="fixed top-0 left-0 right-0 bg-amber-500 text-slate-900 py-1 px-4 text-[9px] font-black uppercase tracking-[0.2em] text-center z-[9999] flex items-center justify-center gap-2">
+          <Database size={10} /> Mode Demo: Database Tidak Terhubung. Data Tidak Akan Tersimpan Secara Permanen.
+        </div>
+      )}
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<Login onLogin={(u) => setUser(u)} />} />
