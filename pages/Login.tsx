@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Mail, Lock, AlertCircle, Sparkles, Clock, ShieldAlert } from 'lucide-react';
+import { ArrowLeft, Mail, Lock, AlertCircle, Sparkles, Clock, ShieldAlert, Loader2 } from 'lucide-react';
 import { api } from '../services/api';
 import { User, Role, AccountStatus } from '../types';
 
@@ -22,9 +22,8 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     setError(null);
 
     try {
-      const user = await api.login(email);
+      const user = await api.login(email, password);
       if (user) {
-        // Validation Logic
         if (user.status === AccountStatus.EXPIRED) {
           setError({ msg: 'Masa aktif paket KASIRA Anda telah berakhir. Silakan lakukan perpanjangan.', type: 'expired' });
           setLoading(false);
@@ -35,10 +34,15 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         if (user.role === Role.OWNER) navigate('/owner');
         else navigate('/kasir');
       } else {
-        setError({ msg: 'Akun tidak ditemukan. Silakan daftarkan akun bisnis Anda terlebih dahulu di KASIRA.', type: 'error' });
+        setError({ msg: 'Akun tidak ditemukan atau gagal dimuat.', type: 'error' });
       }
-    } catch (err) {
-      setError({ msg: 'Gagal menghubungkan ke database.', type: 'error' });
+    } catch (err: any) {
+      console.error("Login detail error:", err);
+      // Menampilkan pesan error asli dari Supabase atau API
+      setError({ 
+        msg: err.message || 'Gagal menghubungkan ke database. Periksa koneksi internet Anda.', 
+        type: 'error' 
+      });
     } finally {
       setLoading(false);
     }
@@ -48,7 +52,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 selection:bg-blue-600 font-sans">
       <div className="w-full max-w-md flex flex-col min-h-[500px]">
         <Link to="/" className="inline-flex items-center gap-3 text-slate-500 hover:text-white mb-10 transition-all group font-semibold uppercase tracking-widest text-[10px]">
-          <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" />
+          <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" /> Kembali
         </Link>
         
         <div className="bg-slate-900 border border-white/10 rounded-[2.5rem] p-12 shadow-2xl relative overflow-hidden flex-1">
@@ -107,9 +111,9 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-4 rounded-2xl transition-all shadow-lg shadow-blue-600/20 uppercase tracking-widest text-xs disabled:opacity-50"
+              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-4 rounded-2xl transition-all shadow-lg shadow-blue-600/20 uppercase tracking-widest text-xs disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              {loading ? 'Authenticating...' : 'Masuk Dashboard'}
+              {loading ? <Loader2 className="animate-spin" size={18} /> : 'Masuk Dashboard'}
             </button>
           </form>
 
