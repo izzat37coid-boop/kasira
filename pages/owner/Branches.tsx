@@ -4,7 +4,7 @@ import Layout from '../../components/Layout';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import { User, Branch, Role } from '../../types';
 import { api } from '../../services/api';
-import { Plus, MapPin, MoreVertical, Edit2, Trash2, CheckCircle, AlertCircle } from 'lucide-react';
+import { Plus, MapPin, MoreVertical, Edit2, Trash2, CheckCircle, AlertCircle, Terminal, Loader2 } from 'lucide-react';
 
 interface Props {
   user: User;
@@ -17,8 +17,9 @@ const OwnerBranches: React.FC<Props> = ({ user, onLogout }) => {
   const [newBranch, setNewBranch] = useState({ name: '', location: '' });
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
+  const [isRlsError, setIsRlsError] = useState(false);
+  const [loading, setLoading] = useState(false);
   
-  // Custom Confirmation State
   const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean; id: string | null }>({
     isOpen: false,
     id: null
@@ -29,21 +30,35 @@ const OwnerBranches: React.FC<Props> = ({ user, onLogout }) => {
   }, []);
 
   const loadBranches = async () => {
-    const data = await api.getBranches(user.id);
-    setBranches(data);
+    try {
+      const data = await api.getBranches(user.id);
+      setBranches(data);
+    } catch (err: any) {
+      console.error("Load branches error:", err);
+    }
   };
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setIsRlsError(false);
+    setLoading(true);
+
     try {
       await api.addBranch({ ...newBranch, ownerId: user.id });
       setShowModal(false);
       setSuccess('Cabang berhasil ditambahkan!');
+      setNewBranch({ name: '', location: '' });
       loadBranches();
       setTimeout(() => setSuccess(''), 3000);
     } catch (err: any) {
-      setError(err.message || 'Gagal menambah cabang');
+      const msg = err.message || '';
+      setError(msg);
+      if (msg.toLowerCase().includes('row-level security') || msg.toLowerCase().includes('rls')) {
+        setIsRlsError(true);
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -55,7 +70,7 @@ const OwnerBranches: React.FC<Props> = ({ user, onLogout }) => {
       const response = await api.deleteBranch(confirmDelete.id, user.role);
       if (response.success) {
         setBranches(prev => prev.filter(b => b.id !== confirmDelete.id));
-        setSuccess('Cabang berhasil dihapus secara permanen.');
+        setSuccess('Cabang berhasil dihapus.');
         setTimeout(() => setSuccess(''), 3000);
       }
     } catch (err: any) {
@@ -80,15 +95,33 @@ const OwnerBranches: React.FC<Props> = ({ user, onLogout }) => {
         </button>
       </div>
 
-      {success && (
-        <div className="bg-green-100 border border-green-200 text-green-700 px-6 py-4 rounded-xl mb-6 flex items-center gap-3 animate-fade-in">
-          <CheckCircle size={20} /> {success}
+      {(error || isRlsError) && (
+        <div className="space-y-4 mb-6 animate-fade-in">
+          <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 px-6 py-4 rounded-xl flex items-center gap-3 text-xs font-bold">
+            <AlertCircle size={18} className="shrink-0" />
+            <span>{error || 'Terjadi kesalahan sistem database.'}</span>
+          </div>
+          
+          {isRlsError && (
+            <div className="bg-amber-500/5 border border-amber-500/10 rounded-2xl p-5">
+              <div className="flex items-center gap-2 text-amber-500 mb-2">
+                <Terminal size={16} />
+                <span className="text-[10px] font-black uppercase tracking-widest">Database Setup Instruction</span>
+              </div>
+              <p className="text-[10px] text-slate-500 leading-relaxed mb-4">
+                Tabel <b>branches</b> memerlukan izin RLS. Jalankan perintah ini di SQL Editor Supabase Anda:
+              </p>
+              <pre className="bg-slate-950 p-3 rounded-xl text-[9px] text-blue-400 font-mono overflow-x-auto border border-white/5">
+                {`CREATE POLICY "Manage Branches" ON branches \nFOR ALL USING (auth.uid() = owner_id);`}
+              </pre>
+            </div>
+          )}
         </div>
       )}
 
-      {error && (
-        <div className="bg-red-100 border border-red-200 text-red-700 px-6 py-4 rounded-xl mb-6 flex items-center gap-3 animate-fade-in">
-          <AlertCircle size={20} /> {error}
+      {success && (
+        <div className="bg-emerald-100 border border-emerald-200 text-emerald-700 px-6 py-4 rounded-xl mb-6 flex items-center gap-3 animate-fade-in">
+          <CheckCircle size={20} /> {success}
         </div>
       )}
 
@@ -131,16 +164,14 @@ const OwnerBranches: React.FC<Props> = ({ user, onLogout }) => {
         )}
       </div>
 
-      {/* Confirmation Dialog */}
       <ConfirmDialog 
         isOpen={confirmDelete.isOpen}
         title="Hapus Cabang?"
-        message="Menghapus cabang akan menghapus SEMUA data produk dan kasir yang terdaftar di cabang tersebut. Tindakan ini tidak dapat dibatalkan."
+        message="Menghapus cabang akan menghapus SEMUA data produk dan kasir yang terdaftar di cabang tersebut."
         onConfirm={executeDelete}
         onCancel={() => setConfirmDelete({ isOpen: false, id: null })}
       />
 
-      {/* Modal Add Branch */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-6">
           <div className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-scale-in">
@@ -171,7 +202,9 @@ const OwnerBranches: React.FC<Props> = ({ user, onLogout }) => {
                 </div>
                 <div className="flex gap-4">
                   <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-3 text-slate-500 font-bold hover:text-slate-800 transition">Batal</button>
-                  <button type="submit" className="flex-1 bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition">Simpan Cabang</button>
+                  <button type="submit" disabled={loading} className="flex-[2] bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition flex items-center justify-center gap-2">
+                    {loading ? <Loader2 className="animate-spin" size={18} /> : 'Simpan Cabang'}
+                  </button>
                 </div>
               </form>
             </div>
