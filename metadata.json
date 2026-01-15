@@ -1,0 +1,7 @@
+{
+  "name": "KASIRA - Smart POS System",
+  "description": "Professional Multi-Branch POS System for Owners and Cashiers with Real-time Reporting and Inventory Management.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
