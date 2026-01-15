@@ -22,18 +22,22 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Fix: Using Supabase v1 session() method and casting as any to resolve property existence errors
-    const currentSession = (supabase.auth as any).session();
-    if (currentSession) {
-      fetchProfile(currentSession.user!.id, currentSession.user!.email!);
-    } else {
-      setLoading(false);
-    }
-
-    // Fix: Using onAuthStateChange with casting and correct cleanup for older Supabase versions
-    const { data: authListener } = (supabase.auth as any).onAuthStateChange((_event: any, session: any) => {
+    // Mengecek sesi aktif saat inisialisasi menggunakan API V2
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        fetchProfile(session.user!.id, session.user!.email!);
+        await fetchProfile(session.user.id, session.user.email!);
+      } else {
+        setLoading(false);
+      }
+    };
+
+    checkSession();
+
+    // Listener perubahan status autentikasi
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (session) {
+        await fetchProfile(session.user.id, session.user.email!);
       } else {
         setUser(null);
         setLoading(false);
@@ -41,9 +45,7 @@ const App: React.FC = () => {
     });
 
     return () => {
-      if (authListener && typeof authListener.unsubscribe === 'function') {
-        authListener.unsubscribe();
-      }
+      subscription.unsubscribe();
     };
   }, []);
 
@@ -76,8 +78,7 @@ const App: React.FC = () => {
   };
 
   const handleLogout = async () => {
-    // Fix: Using signOut with casting to resolve missing property error
-    await (supabase.auth as any).signOut();
+    await supabase.auth.signOut();
     setUser(null);
   };
 

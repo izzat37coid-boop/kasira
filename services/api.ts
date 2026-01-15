@@ -9,71 +9,79 @@ export const api = {
    * AUTHENTICATION
    */
   login: async (email: string, password?: string): Promise<User | null> => {
-    // Fix: Using Supabase v1 signIn method as signInWithPassword might not be available in this environment's type definitions
-    const { user, error: authError } = await (supabase.auth as any).signIn({
-      email,
-      password: password || 'password123', 
-    });
+    try {
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password: password || 'password123', 
+      });
 
-    if (authError) throw authError;
-    if (!user) return null;
+      if (authError) throw authError;
+      if (!data.user) return null;
 
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', user.id)
-      .single();
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', data.user.id)
+        .single();
 
-    if (profileError) return null;
+      if (profileError) return null;
 
-    return {
-      id: profile.id,
-      name: profile.name,
-      email: user.email!,
-      role: profile.role as Role,
-      businessName: profile.business_name,
-      status: profile.status as AccountStatus,
-      packageType: profile.package_type,
-      expiredAt: profile.expired_at,
-      branchId: profile.branch_id
-    };
+      return {
+        id: profile.id,
+        name: profile.name,
+        email: data.user.email!,
+        role: profile.role as Role,
+        businessName: profile.business_name,
+        status: profile.status as AccountStatus,
+        packageType: profile.package_type,
+        expiredAt: profile.expired_at,
+        branchId: profile.branch_id
+      };
+    } catch (e: any) {
+      console.error("Login failed:", e.message);
+      throw e;
+    }
   },
 
   registerTrial: async (data: any): Promise<User> => {
-    // Fix: Using Supabase v1 signUp method with correct property name and casting to avoid namespace errors
-    const { user, error: authError } = await (supabase.auth as any).signUp({
-      email: data.email,
-      password: data.password,
-    });
+    try {
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: data.email,
+        password: data.password,
+      });
 
-    if (authError) throw authError;
-    if (!user) throw new Error("Registration failed");
+      if (authError) throw authError;
+      if (!authData.user) throw new Error("Registrasi gagal.");
 
-    const profileData = {
-      id: user.id,
-      name: data.name,
-      role: Role.OWNER,
-      business_name: data.businessName,
-      status: AccountStatus.TRIAL,
-      package_type: 'Trial',
-      expired_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
-    };
+      const profileData = {
+        id: authData.user.id,
+        name: data.name,
+        role: Role.OWNER,
+        business_name: data.businessName,
+        status: AccountStatus.TRIAL,
+        package_type: 'Trial',
+        expired_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+      };
 
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .insert(profileData);
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .insert(profileData);
 
-    if (profileError) throw profileError;
+      if (profileError) throw profileError;
 
-    return {
-      ...profileData,
-      email: data.email,
-      role: Role.OWNER,
-      businessName: data.businessName,
-      status: AccountStatus.TRIAL,
-      packageType: 'Trial',
-      expiredAt: profileData.expired_at
-    };
+      return {
+        ...profileData,
+        email: data.email,
+        role: Role.OWNER,
+        businessName: data.businessName,
+        status: AccountStatus.TRIAL,
+        packageType: 'Trial',
+        expiredAt: profileData.expired_at
+      };
+    } catch (e: any) {
+      console.error("Registration failed:", e.message);
+      throw e;
+    }
   },
 
   /**
@@ -185,7 +193,6 @@ export const api = {
   },
 
   getCategories: async (): Promise<any[]> => {
-    // Unique categories from products table as a simple implementation
     const { data, error } = await supabase.from('products').select('category');
     if (error) throw error;
     const unique = Array.from(new Set((data || []).map(p => p.category)));
@@ -214,8 +221,6 @@ export const api = {
   },
 
   addStaff: async (data: any) => {
-    // In actual Supabase, you'd usually use an Edge Function to create an Auth user for staff
-    // For this demo, we insert into profiles and assume auth is handled separately or via social
     const { error } = await supabase.from('profiles').insert({
       id: Math.random().toString(36).substr(2, 9),
       name: data.name,
@@ -274,7 +279,6 @@ export const api = {
         .eq('id', item.productId);
     }
 
-    // Broadcast to owner for real-time dashboard update
     realtime.broadcast(`owner.${data.ownerId}`, 'TransactionCreated', tx);
 
     return {
@@ -334,7 +338,7 @@ export const api = {
    */
   adjustStock: async (productId: string, amount: number, note: string) => {
     const { data: prod } = await supabase.from('products').select('stock, branch_id').eq('id', productId).single();
-    if (!prod) throw new Error("Product not found");
+    if (!prod) throw new Error("Produk tidak ditemukan.");
     const { error } = await supabase.from('products').update({ stock: prod.stock + amount }).eq('id', productId);
     if (error) throw error;
     realtime.broadcast(`branch.${prod.branch_id}`, 'StockUpdated', {});
@@ -400,7 +404,7 @@ export const api = {
         ...stats,
         branchId: branch.id,
         branchName: branch.name,
-        bestSeller: 'Menu Favorit',
+        bestSeller: 'Menu Terlaris',
         trend: 'stable'
       });
     }
@@ -408,7 +412,6 @@ export const api = {
   },
 
   getAIAnalysis: async (data: any) => {
-    // Fix: Re-initializing client within the method to ensure fresh environment context if needed
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const prompt = `Analisis data bisnis POS ini: 
       Omzet: Rp${data.stats.revenue.toLocaleString()}, 
@@ -417,16 +420,22 @@ export const api = {
       Berikan 3 saran strategis UMKM dalam Bahasa Indonesia yang sangat singkat (maksimal 2 kalimat per poin).`;
 
     try {
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
-        contents: prompt,
-      });
-      // Fix: Directly access the .text property as per the latest @google/genai guidelines
-      return response.text;
+      const response = await api.generateAIContent(prompt);
+      return response;
     } catch (error) {
       console.error("AI Analysis Error:", error);
       return "Analisis AI sedang sibuk. Silakan coba beberapa saat lagi.";
     }
+  },
+
+  // Helper untuk memanggil Gemini dengan instance baru setiap saat (sesuai best practice)
+  generateAIContent: async (prompt: string) => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-pro-preview',
+      contents: prompt,
+    });
+    return response.text;
   },
 
   initiateRegistration: async (data: any): Promise<PaymentRecord> => {
@@ -442,7 +451,6 @@ export const api = {
   },
 
   handleRegistrationCallback: async (orderId: string, status: string): Promise<User | null> => {
-    // Logic to update profile status to ACTIVE
     const { data: profile } = await supabase.from('profiles').select('*').limit(1).single();
     if (!profile) return null;
     
@@ -452,7 +460,7 @@ export const api = {
       id: profile.id,
       name: profile.name,
       email: 'user@kasira.id',
-      role: Role.OWNER,
+      role: profile.role as Role,
       businessName: profile.business_name,
       status: AccountStatus.ACTIVE,
       packageType: profile.package_type,
