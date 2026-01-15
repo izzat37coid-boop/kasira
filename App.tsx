@@ -27,7 +27,6 @@ const App: React.FC = () => {
         const { data } = await supabase.auth.getSession();
         if (data?.session) {
           const profileFound = await fetchProfile(data.session.user.id, data.session.user.email!);
-          // Jika ada sesi tapi tidak ada profil di DB, paksa logout untuk membersihkan LocalStorage
           if (!profileFound) {
             console.warn("Sesi ditemukan tapi profil kosong. Membersihkan sesi...");
             await handleLogout();
@@ -42,7 +41,7 @@ const App: React.FC = () => {
 
     checkSession();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: string, session: any) => {
       if (event === 'SIGNED_IN' && session) {
         const profileFound = await fetchProfile(session.user.id, session.user.email!);
         if (!profileFound) await handleLogout();
@@ -88,7 +87,7 @@ const App: React.FC = () => {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    localStorage.clear(); // Bersihkan semua residu localstorage
+    localStorage.clear(); 
     setUser(null);
     setLoading(false);
   };

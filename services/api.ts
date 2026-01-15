@@ -1,5 +1,5 @@
 
-import { User, Role, Branch, Product, Transaction, Category, BranchPerformance, AccountStatus, PaymentStatus, PaymentRecord } from '../types';
+import { User, Role, Branch, Product, Transaction, BranchPerformance, AccountStatus, PaymentStatus, PaymentRecord } from '../types';
 import { supabase } from './supabase';
 import { realtime } from './realtime';
 import { GoogleGenAI } from "@google/genai";
@@ -47,7 +47,6 @@ export const api = {
 
   registerTrial: async (data: any): Promise<User> => {
     try {
-      // 1. Sign Up User ke Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
@@ -56,7 +55,6 @@ export const api = {
       if (authError) throw authError;
       if (!authData.user) throw new Error("Gagal membuat kredensial.");
 
-      // 2. Siapkan data profil
       const profileData = {
         id: authData.user.id,
         name: data.name,
@@ -67,13 +65,11 @@ export const api = {
         expired_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
       };
 
-      // 3. Simpan data ke tabel profiles
       const { error: profileError } = await supabase
         .from('profiles')
         .insert(profileData);
 
       if (profileError) {
-        // PENTING: Jika gagal simpan profil, batalkan sesi login
         await supabase.auth.signOut();
         throw new Error(`Gagal membuat profil: ${profileError.message}. Periksa RLS Policy.`);
       }
@@ -103,7 +99,7 @@ export const api = {
       .eq('owner_id', ownerId);
     
     if (error) throw error;
-    return (data || []).map(b => ({
+    return (data || []).map((b: any) => ({
       id: b.id,
       name: b.name,
       location: b.location,
@@ -145,7 +141,7 @@ export const api = {
     const { data, error } = await query;
     if (error) throw error;
     
-    return (data || []).map(p => ({
+    return (data || []).map((p: any) => ({
       id: p.id,
       name: p.name,
       category: p.category,
@@ -204,7 +200,7 @@ export const api = {
   getCategories: async (): Promise<any[]> => {
     const { data, error } = await supabase.from('products').select('category');
     if (error) throw error;
-    const unique = Array.from(new Set((data || []).map(p => p.category)));
+    const unique = Array.from(new Set((data || []).map((p: any) => p.category)));
     return unique.map((name, id) => ({ id: String(id), name }));
   },
 
@@ -213,14 +209,14 @@ export const api = {
    */
   getStaff: async (ownerId: string): Promise<User[]> => {
     const branches = await api.getBranches(ownerId);
-    const branchIds = branches.map(b => b.id);
+    const branchIds = branches.map((b: any) => b.id);
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
       .eq('role', Role.KASIR)
       .in('branch_id', branchIds);
     if (error) throw error;
-    return (data || []).map(p => ({
+    return (data || []).map((p: any) => ({
       id: p.id,
       name: p.name,
       email: p.email || 'kasir@kasira.id',
@@ -311,7 +307,7 @@ export const api = {
       .select('*, transaction_items(*)')
       .eq('branch_id', branchId);
     if (error) throw error;
-    return (data || []).map(t => ({
+    return (data || []).map((t: any) => ({
       id: t.id,
       branchId: t.branch_id,
       cashierId: t.cashier_id,

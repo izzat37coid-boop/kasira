@@ -26,7 +26,7 @@ class RealtimeEngine {
 
   broadcast(channelName: string, event: string, data: any) {
     const channel = supabase.channel(channelName);
-    channel.subscribe((status) => {
+    channel.subscribe((status: string) => {
       if (status === 'SUBSCRIBED') {
         channel.send({
           type: 'broadcast',
