@@ -45,14 +45,16 @@ export const api = {
 
   registerTrial: async (data: any): Promise<User> => {
     try {
+      // 1. Sign Up User ke Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
       });
 
       if (authError) throw authError;
-      if (!authData.user) throw new Error("Registrasi gagal.");
+      if (!authData.user) throw new Error("Registrasi gagal di sisi autentikasi.");
 
+      // 2. Siapkan data profil
       const profileData = {
         id: authData.user.id,
         name: data.name,
@@ -63,11 +65,16 @@ export const api = {
         expired_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
       };
 
+      // 3. Gunakan UPSERT untuk memastikan data masuk/update ke tabel profiles
+      // Upsert akan memasukkan data baru, atau mengupdate jika ID sudah ada
       const { error: profileError } = await supabase
         .from('profiles')
-        .insert(profileData);
+        .upsert(profileData, { onConflict: 'id' });
 
-      if (profileError) throw profileError;
+      if (profileError) {
+        console.error("Profile DB Error:", profileError);
+        throw new Error(`Gagal menyimpan data ke database: ${profileError.message}. Pastikan RLS Policy sudah disetel.`);
+      }
 
       return {
         ...profileData,
@@ -360,10 +367,11 @@ export const api = {
     if (filters.startDate) query = query.gte('created_at', filters.startDate);
     if (filters.endDate) query = query.lte('created_at', filters.endDate);
 
-    const { data: txs, error } = await query;
-    if (error) throw error;
+    const { data: txs, error } = query;
+    const { data, error: dbError } = await query;
+    if (dbError) throw dbError;
 
-    const stats = (txs || []).reduce((acc: any, t: any) => {
+    const stats = (data || []).reduce((acc: any, t: any) => {
       const cogs = t.transaction_items.reduce((sum: number, item: any) => sum + (item.cost_snapshot * item.quantity), 0);
       acc.revenue += t.subtotal;
       acc.cogs += cogs;
@@ -377,7 +385,7 @@ export const api = {
     stats.netProfit = stats.grossProfit - stats.totalDiscount;
 
     return { 
-      transactions: (txs || []).map((t: any) => ({
+      transactions: (data || []).map((t: any) => ({
         id: t.id,
         branchId: t.branch_id,
         cashierId: t.cashier_id,

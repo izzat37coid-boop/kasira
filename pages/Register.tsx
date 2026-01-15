@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Building2, Mail, Lock, CheckCircle2, QrCode, CreditCard, Sparkles, Zap, ShieldCheck, Loader2 } from 'lucide-react';
+import { ArrowLeft, Building2, Mail, Lock, CheckCircle2, QrCode, CreditCard, Sparkles, Zap, ShieldCheck, Loader2, AlertCircle } from 'lucide-react';
 import { api } from '../services/api';
 import { User, AccountStatus, PaymentRecord } from '../types';
 
@@ -23,6 +23,7 @@ const Register: React.FC<RegisterProps> = ({ onRegister }) => {
   });
   
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
   const [currentPayment, setCurrentPayment] = useState<PaymentRecord | null>(null);
@@ -31,6 +32,7 @@ const Register: React.FC<RegisterProps> = ({ onRegister }) => {
   const handleInitialSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setErrorMsg('');
 
     try {
       if (formData.package === 'Trial') {
@@ -42,13 +44,14 @@ const Register: React.FC<RegisterProps> = ({ onRegister }) => {
           navigate('/owner');
         }, 3000);
       } else {
-        // Init Midtrans Payment for Paid Packages
         const payment = await api.initiateRegistration(formData);
         setCurrentPayment(payment);
         setStep(2);
       }
-    } catch (err) {
-      alert('Gagal menghubungkan ke sistem KASIRA');
+    } catch (err: any) {
+      console.error("Registration Error:", err);
+      // Menampilkan pesan error spesifik dari Supabase
+      setErrorMsg(err.message || 'Gagal menghubungkan ke sistem KASIRA. Pastikan tabel database sudah siap.');
     } finally {
       setLoading(false);
     }
@@ -57,9 +60,9 @@ const Register: React.FC<RegisterProps> = ({ onRegister }) => {
   const handleConfirmPayment = async () => {
     if (!currentPayment) return;
     setLoading(true);
+    setErrorMsg('');
     
     try {
-      // Simulate Callback Verification
       const user = await api.handleRegistrationCallback(currentPayment.orderId, 'paid');
       if (user) {
         setSuccessMsg('✅ Pembayaran berhasil. Akun Pro Anda telah aktif sepenuhnya.');
@@ -69,8 +72,8 @@ const Register: React.FC<RegisterProps> = ({ onRegister }) => {
           navigate('/owner');
         }, 3000);
       }
-    } catch (err) {
-      alert('Gagal memverifikasi pembayaran.');
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Gagal memverifikasi pembayaran.');
     } finally {
       setLoading(false);
     }
@@ -116,6 +119,13 @@ const Register: React.FC<RegisterProps> = ({ onRegister }) => {
           )}
 
           <div className="p-10">
+            {errorMsg && (
+              <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 p-4 rounded-2xl mb-8 flex items-center gap-3 animate-fade-in text-xs font-bold">
+                <AlertCircle size={18} className="shrink-0" />
+                <span>{errorMsg}</span>
+              </div>
+            )}
+
             {step === 1 ? (
               <form onSubmit={handleInitialSubmit} className="space-y-6">
                 <div className="text-center mb-10">
