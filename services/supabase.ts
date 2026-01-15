@@ -1,9 +1,16 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-// Mencoba mengambil dari process.env (diinjeksi oleh vite.config) atau import.meta.env (standar Vite)
-const supabaseUrl = process.env.SUPABASE_URL || (import.meta as any).env?.VITE_SUPABASE_URL;
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || (import.meta as any).env?.VITE_SUPABASE_ANON_KEY;
+// Deteksi dari berbagai kemungkinan sumber (Vite define, import.meta.env, atau process.env)
+const supabaseUrl = 
+  process.env.SUPABASE_URL || 
+  (import.meta as any).env?.VITE_SUPABASE_URL || 
+  (import.meta as any).env?.SUPABASE_URL;
+
+const supabaseAnonKey = 
+  process.env.SUPABASE_ANON_KEY || 
+  (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || 
+  (import.meta as any).env?.SUPABASE_ANON_KEY;
 
 export const isDbConfigured = 
   !!supabaseUrl && 
@@ -12,11 +19,13 @@ export const isDbConfigured =
   supabaseAnonKey !== 'undefined' &&
   supabaseUrl !== '';
 
-// Log status koneksi untuk debug di Vercel (Hanya muncul di console log)
-if (!isDbConfigured) {
-  console.warn("KASIRA Status: Database belum terhubung. Pastikan SUPABASE_URL & SUPABASE_ANON_KEY sudah diatur di Environment Variables.");
+// Debug Log (Masked untuk keamanan)
+if (isDbConfigured) {
+  console.log("KASIRA: Database tersambung. URL terdeteksi.");
 } else {
-  console.log("KASIRA Status: Database terdeteksi dan siap digunakan.");
+  console.warn("KASIRA: Konfigurasi Database tidak lengkap.");
+  console.log("Status URL:", !!supabaseUrl ? "ADA" : "KOSONG");
+  console.log("Status KEY:", !!supabaseAnonKey ? "ADA" : "KOSONG");
 }
 
 export const supabase = isDbConfigured
