@@ -25,7 +25,7 @@ export const api = {
         .single();
 
       if (profileError || !profile) {
-        throw new Error("Profil akun tidak ditemukan di database. Silakan hubungi support.");
+        throw new Error("Profil akun tidak ditemukan. Pastikan RLS Policy di Supabase sudah di-set ke 'Enable' untuk tabel profiles.");
       }
 
       return {
@@ -47,14 +47,22 @@ export const api = {
 
   registerTrial: async (data: any): Promise<User> => {
     try {
+      // 1. Buat User di Auth Supabase
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
       });
 
-      if (authError) throw authError;
-      if (!authData.user) throw new Error("Gagal membuat kredensial.");
+      if (authError) {
+        if (authError.message.includes('already registered')) {
+          throw new Error("Email ini sudah terdaftar. Silakan gunakan email lain atau hapus user lama di dashboard Auth Supabase.");
+        }
+        throw authError;
+      }
+      
+      if (!authData.user) throw new Error("Gagal membuat kredensial login.");
 
+      // 2. Persiapkan data Profile
       const profileData = {
         id: authData.user.id,
         name: data.name,
@@ -65,13 +73,15 @@ export const api = {
         expired_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
       };
 
+      // 3. Masukkan ke tabel profiles
       const { error: profileError } = await supabase
         .from('profiles')
         .insert(profileData);
 
       if (profileError) {
-        await supabase.auth.signOut();
-        throw new Error(`Gagal membuat profil: ${profileError.message}. Periksa RLS Policy.`);
+        // Jika gagal di sini, user 'setengah jadi' (ada di Auth tapi gak ada di Profile)
+        console.error("Database Insert Error:", profileError);
+        throw new Error(`Auth Berhasil, tapi Gagal simpan Profil: ${profileError.message}. Ini biasanya karena RLS Policy di Supabase belum dikonfigurasi.`);
       }
 
       return {

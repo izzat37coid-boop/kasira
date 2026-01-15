@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Building2, Mail, Lock, CheckCircle2, QrCode, CreditCard, Sparkles, Zap, ShieldCheck, Loader2, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Building2, Mail, Lock, CheckCircle2, QrCode, CreditCard, Sparkles, Zap, ShieldCheck, Loader2, AlertCircle, Terminal } from 'lucide-react';
 import { api } from '../services/api';
 import { User, AccountStatus, PaymentRecord } from '../types';
 
@@ -24,6 +24,7 @@ const Register: React.FC<RegisterProps> = ({ onRegister }) => {
   
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [isRlsError, setIsRlsError] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
   const [currentPayment, setCurrentPayment] = useState<PaymentRecord | null>(null);
@@ -33,6 +34,7 @@ const Register: React.FC<RegisterProps> = ({ onRegister }) => {
     e.preventDefault();
     setLoading(true);
     setErrorMsg('');
+    setIsRlsError(false);
 
     try {
       if (formData.package === 'Trial') {
@@ -50,8 +52,13 @@ const Register: React.FC<RegisterProps> = ({ onRegister }) => {
       }
     } catch (err: any) {
       console.error("Registration Error:", err);
-      // Menampilkan pesan error spesifik dari Supabase
-      setErrorMsg(err.message || 'Gagal menghubungkan ke sistem KASIRA. Pastikan tabel database sudah siap.');
+      const msg = err.message || '';
+      setErrorMsg(msg);
+      
+      // Deteksi error RLS Supabase
+      if (msg.toLowerCase().includes('row-level security') || msg.toLowerCase().includes('rls')) {
+        setIsRlsError(true);
+      }
     } finally {
       setLoading(false);
     }
@@ -120,9 +127,26 @@ const Register: React.FC<RegisterProps> = ({ onRegister }) => {
 
           <div className="p-10">
             {errorMsg && (
-              <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 p-4 rounded-2xl mb-8 flex items-center gap-3 animate-fade-in text-xs font-bold">
-                <AlertCircle size={18} className="shrink-0" />
-                <span>{errorMsg}</span>
+              <div className="space-y-4 mb-8 animate-fade-in">
+                <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 p-4 rounded-2xl flex items-center gap-3 text-xs font-bold">
+                  <AlertCircle size={18} className="shrink-0" />
+                  <span>{errorMsg}</span>
+                </div>
+                
+                {isRlsError && (
+                  <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-5">
+                    <div className="flex items-center gap-2 text-amber-500 mb-3">
+                      <Terminal size={16} />
+                      <span className="text-[10px] font-black uppercase tracking-widest">Database Setup Required</span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 leading-relaxed mb-4">
+                      Supabase memblokir pendaftaran karena <b>RLS Policy</b> belum dikonfigurasi. Jalankan perintah ini di SQL Editor Supabase Anda:
+                    </p>
+                    <pre className="bg-slate-950 p-3 rounded-xl text-[9px] text-blue-400 font-mono overflow-x-auto border border-white/5">
+                      {`CREATE POLICY "Allow Insert" ON profiles \nFOR INSERT WITH CHECK (auth.uid() = id);`}
+                    </pre>
+                  </div>
+                )}
               </div>
             )}
 
