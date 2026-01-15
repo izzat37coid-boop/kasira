@@ -74,7 +74,7 @@ const OwnerDashboard: React.FC<Props> = ({ user, onLogout }) => {
     const ownerChannel = realtime.privateChannel(`owner.${user.id}`);
     ownerChannel.listen('TransactionCreated', (tx: Transaction) => {
       setStats(prev => {
-        const itemCogs = tx.items.reduce((acc, i) => acc + (i.cost_snapshot * i.quantity), 0);
+        const itemCogs = tx.items.reduce((acc: number, i: any) => acc + (i.cost_snapshot * i.quantity), 0);
         const newRevenue = prev.revenue + tx.subtotal;
         const newCogs = prev.cogs + itemCogs;
         const newDiscount = prev.totalDiscount + (tx.discount || 0);
@@ -159,7 +159,7 @@ const OwnerDashboard: React.FC<Props> = ({ user, onLogout }) => {
         </div>
         
         <div className="flex items-center gap-2 bg-white p-1.5 rounded-2xl border border-slate-100 shadow-sm">
-          {['7d', '30d', '1y'].map((t) => (
+          {['7d', '30d', '1y'].map((t: string) => (
             <button
               key={t}
               onClick={() => setFilterType(t)}

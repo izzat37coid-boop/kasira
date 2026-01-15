@@ -1,132 +1,118 @@
 
-import { User, Role, Branch, Product, Transaction, Category, BranchPerformance, AccountStatus, PaymentStatus, PaymentRecord, TransactionItem } from '../types';
+import { User, Role, Branch, Product, Transaction, Category, BranchPerformance, AccountStatus, PaymentStatus, PaymentRecord } from '../types';
+import { supabase } from './supabase';
 import { realtime } from './realtime';
 import { GoogleGenAI } from "@google/genai";
-
-// KONFIGURASI API PRODUKSI
-const API_BASE_URL = 'https://api.kasira.id/api'; // Ganti dengan URL Laravel Anda
-const IS_PRODUCTION = false; // Ubah ke true jika ingin koneksi ke MySQL/Laravel asli
-
-const DB_PREFIX = 'kasira_db_';
-
-// Helper untuk LocalStorage (Fallback Mode Demo)
-const save = (key: string, data: any) => localStorage.setItem(DB_PREFIX + key, JSON.stringify(data));
-const load = (key: string, fallback: any) => {
-  const data = localStorage.getItem(DB_PREFIX + key);
-  return data ? JSON.parse(data) : fallback;
-};
-
-// Mock Users untuk Demo
-let users: User[] = load('users', [
-  { id: 'u1', name: 'Budi Hartono', email: 'owner@kasira.com', role: Role.OWNER, businessName: 'Kasira Retail Group', status: AccountStatus.ACTIVE, packageType: 'Pro', expiredAt: '2026-12-31T23:59:59Z' },
-  { id: 'u2', name: 'Andi Pratama', email: 'kasir@kasira.com', role: Role.KASIR, branchId: 'b1' }
-]);
-
-const uuid = () => Math.random().toString(36).substr(2, 9).toUpperCase();
-
-// Helper Fetch (Untuk Laravel Sanctum)
-async function request(endpoint: string, options: RequestInit = {}) {
-  if (!IS_PRODUCTION) return null; // Jika mode demo, lewatkan
-
-  const token = localStorage.getItem('kasira_token');
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-      'Authorization': `Bearer ${token}`,
-      ...options.headers,
-    },
-  });
-
-  if (!response.ok) throw new Error('API Request Failed');
-  return response.json();
-}
 
 export const api = {
   /**
    * AUTHENTICATION
    */
-  login: async (email: string): Promise<User | null> => {
-    if (IS_PRODUCTION) {
-      const res = await request('/login', {
-        method: 'POST',
-        body: JSON.stringify({ email })
-      });
-      return res?.user;
-    }
-    
-    // Demo Mode logic
-    const user = users.find(u => u.email === email);
-    if (user && user.role === Role.OWNER && user.expiredAt) {
-      if (new Date(user.expiredAt) < new Date()) {
-        user.status = AccountStatus.EXPIRED;
-        save('users', users);
-      }
-    }
-    return user || null;
+  login: async (email: string, password?: string): Promise<User | null> => {
+    // Fix: Using Supabase v1 signIn method as signInWithPassword might not be available in this environment's type definitions
+    const { user, error: authError } = await (supabase.auth as any).signIn({
+      email,
+      password: password || 'password123', 
+    });
+
+    if (authError) throw authError;
+    if (!user) return null;
+
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError) return null;
+
+    return {
+      id: profile.id,
+      name: profile.name,
+      email: user.email!,
+      role: profile.role as Role,
+      businessName: profile.business_name,
+      status: profile.status as AccountStatus,
+      packageType: profile.package_type,
+      expiredAt: profile.expired_at,
+      branchId: profile.branch_id
+    };
   },
 
   registerTrial: async (data: any): Promise<User> => {
-    const newUser: User = {
-      id: uuid(),
+    // Fix: Using Supabase v1 signUp method with correct property name and casting to avoid namespace errors
+    const { user, error: authError } = await (supabase.auth as any).signUp({
+      email: data.email,
+      password: data.password,
+    });
+
+    if (authError) throw authError;
+    if (!user) throw new Error("Registration failed");
+
+    const profileData = {
+      id: user.id,
       name: data.name,
+      role: Role.OWNER,
+      business_name: data.businessName,
+      status: AccountStatus.TRIAL,
+      package_type: 'Trial',
+      expired_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+    };
+
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .insert(profileData);
+
+    if (profileError) throw profileError;
+
+    return {
+      ...profileData,
       email: data.email,
       role: Role.OWNER,
       businessName: data.businessName,
       status: AccountStatus.TRIAL,
       packageType: 'Trial',
-      expiredAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+      expiredAt: profileData.expired_at
     };
-    users.push(newUser);
-    save('users', users);
-    return newUser;
-  },
-
-  initiateRegistration: async (data: any): Promise<PaymentRecord> => {
-    const amount = data.package === 'Pro' ? 199000 : 1900000;
-    const payment: PaymentRecord = {
-      orderId: `REG-${uuid()}`,
-      amount,
-      paymentType: 'qris',
-      qrisUrl: `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=PAY-${uuid()}`,
-      status: 'pending'
-    };
-    return payment;
-  },
-
-  handleRegistrationCallback: async (orderId: string, status: 'paid' | 'failed'): Promise<User | null> => {
-    const user = users[users.length - 1];
-    if (user && status === 'paid') {
-      user.status = AccountStatus.ACTIVE;
-      save('users', users);
-      return user;
-    }
-    return null;
   },
 
   /**
    * BRANCH MANAGEMENT
    */
   getBranches: async (ownerId: string): Promise<Branch[]> => {
-    if (IS_PRODUCTION) return request(`/branches?owner_id=${ownerId}`);
-    return load('branches', []).filter((b: Branch) => b.ownerId === ownerId);
+    const { data, error } = await supabase
+      .from('branches')
+      .select('*')
+      .eq('owner_id', ownerId);
+    
+    if (error) throw error;
+    return (data || []).map(b => ({
+      id: b.id,
+      name: b.name,
+      location: b.location,
+      ownerId: b.owner_id
+    }));
   },
 
   addBranch: async (data: any) => {
-    if (IS_PRODUCTION) return request('/branches', { method: 'POST', body: JSON.stringify(data) });
-    const branches = load('branches', []);
-    const newBranch = { ...data, id: uuid() };
-    branches.push(newBranch);
-    save('branches', branches);
+    const { data: newBranch, error } = await supabase
+      .from('branches')
+      .insert({
+        name: data.name,
+        location: data.location,
+        owner_id: data.ownerId
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
     return newBranch;
   },
 
   deleteBranch: async (id: string, role: Role) => {
     if (role !== Role.OWNER) throw new Error("Unauthorized");
-    const branches = load('branches', []);
-    const filtered = branches.filter((b: Branch) => b.id !== id);
-    save('branches', filtered);
+    const { error } = await supabase.from('branches').delete().eq('id', id);
+    if (error) throw error;
     return { success: true };
   },
 
@@ -134,138 +120,212 @@ export const api = {
    * PRODUCT MANAGEMENT
    */
   getProducts: async (branchId?: string): Promise<Product[]> => {
-    if (IS_PRODUCTION) return request(`/products${branchId ? `?branch_id=${branchId}` : ''}`);
-    const p = load('products', []);
-    if (branchId && branchId !== 'all') return p.filter((item: Product) => item.branchId === branchId);
-    return p;
-  },
-
-  getCategories: async (): Promise<Category[]> => {
-    return load('categories', [
-      { id: 'c1', name: 'Makanan', branchId: 'all' },
-      { id: 'c2', name: 'Minuman', branchId: 'all' }
-    ]);
+    let query = supabase.from('products').select('*');
+    if (branchId && branchId !== 'all') {
+      query = query.eq('branch_id', branchId);
+    }
+    
+    const { data, error } = await query;
+    if (error) throw error;
+    
+    return (data || []).map(p => ({
+      id: p.id,
+      name: p.name,
+      category: p.category,
+      price: p.price,
+      costPrice: p.cost_price,
+      stock: p.stock,
+      branchId: p.branch_id,
+      imageUrl: p.image_url
+    }));
   },
 
   addProduct: async (data: any) => {
-    if (IS_PRODUCTION) return request('/products', { method: 'POST', body: JSON.stringify(data) });
-    const products = load('products', []);
-    const newProduct = { 
-      ...data, 
-      id: uuid(), 
-      price: Number(data.price), 
-      costPrice: Number(data.costPrice), 
-      stock: Number(data.stock),
-      imageUrl: data.imageUrl || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500'
-    };
-    products.push(newProduct);
-    save('products', products);
-    return newProduct;
+    const { data: product, error } = await supabase
+      .from('products')
+      .insert({
+        name: data.name,
+        category: data.category,
+        price: Number(data.price),
+        cost_price: Number(data.costPrice),
+        stock: Number(data.stock),
+        branch_id: data.branchId,
+        image_url: data.imageUrl || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500'
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return product;
   },
 
   updateProduct: async (id: string, data: any, role: Role) => {
     if (role !== Role.OWNER) throw new Error("Unauthorized");
-    const products = load('products', []);
-    const idx = products.findIndex((p: Product) => p.id === id);
-    if (idx !== -1) {
-      products[idx] = { ...products[idx], ...data, price: Number(data.price), costPrice: Number(data.costPrice), stock: Number(data.stock) };
-      save('products', products);
-    }
-    return products[idx];
+    const { error } = await supabase
+      .from('products')
+      .update({
+        name: data.name,
+        category: data.category,
+        price: Number(data.price),
+        cost_price: Number(data.costPrice),
+        stock: Number(data.stock),
+        branch_id: data.branchId,
+        image_url: data.imageUrl
+      })
+      .eq('id', id);
+    if (error) throw error;
+    return { success: true };
   },
 
   deleteProduct: async (id: string, role: Role) => {
     if (role !== Role.OWNER) throw new Error("Unauthorized");
-    const products = load('products', []);
-    const filtered = products.filter((p: Product) => p.id !== id);
-    save('products', filtered);
+    const { error } = await supabase.from('products').delete().eq('id', id);
+    if (error) throw error;
     return { success: true };
+  },
+
+  getCategories: async (): Promise<any[]> => {
+    // Unique categories from products table as a simple implementation
+    const { data, error } = await supabase.from('products').select('category');
+    if (error) throw error;
+    const unique = Array.from(new Set((data || []).map(p => p.category)));
+    return unique.map((name, id) => ({ id: String(id), name }));
   },
 
   /**
    * STAFF MANAGEMENT
    */
   getStaff: async (ownerId: string): Promise<User[]> => {
-    return users.filter(u => u.role === Role.KASIR);
+    const branches = await api.getBranches(ownerId);
+    const branchIds = branches.map(b => b.id);
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('role', Role.KASIR)
+      .in('branch_id', branchIds);
+    if (error) throw error;
+    return (data || []).map(p => ({
+      id: p.id,
+      name: p.name,
+      email: p.email || 'kasir@kasira.id',
+      role: Role.KASIR,
+      branchId: p.branch_id
+    }));
   },
 
   addStaff: async (data: any) => {
-    const newStaff: User = {
-      id: uuid(),
+    // In actual Supabase, you'd usually use an Edge Function to create an Auth user for staff
+    // For this demo, we insert into profiles and assume auth is handled separately or via social
+    const { error } = await supabase.from('profiles').insert({
+      id: Math.random().toString(36).substr(2, 9),
       name: data.name,
-      email: data.email,
       role: Role.KASIR,
-      branchId: data.branchId
-    };
-    users.push(newStaff);
-    save('users', users);
-    return newStaff;
+      branch_id: data.branchId,
+      status: AccountStatus.ACTIVE
+    });
+    if (error) throw error;
+    return { success: true };
   },
 
   deleteStaff: async (id: string, role: Role) => {
     if (role !== Role.OWNER) throw new Error("Unauthorized");
-    users = users.filter(u => u.id !== id);
-    save('users', users);
+    const { error } = await supabase.from('profiles').delete().eq('id', id);
+    if (error) throw error;
     return { success: true };
   },
 
   /**
-   * TRANSACTION & POS
+   * TRANSACTION
    */
-  getTransactions: async (branchId: string): Promise<Transaction[]> => {
-    const tx = load('transactions', []);
-    return tx.filter((t: Transaction) => t.branchId === branchId);
-  },
-
   createTransaction: async (data: any): Promise<Transaction> => {
-    if (IS_PRODUCTION) return request('/transactions', { method: 'POST', body: JSON.stringify(data) });
-    
-    const products = load('products', []);
-    const transactions = load('transactions', []);
-    
-    const items = data.items.map((item: any) => {
-      const p = products.find((prod: Product) => prod.id === item.productId);
-      if (p) p.stock -= item.quantity;
-      return { ...item, name: p?.name, price_snapshot: p?.price, cost_snapshot: p?.costPrice };
-    });
+    const { data: tx, error: txError } = await supabase
+      .from('transactions')
+      .insert({
+        branch_id: data.branchId,
+        cashier_id: data.cashierId,
+        subtotal: data.subtotal || 0,
+        tax: data.tax || 0,
+        discount: data.discount || 0,
+        total: data.total || 0,
+        status: data.paymentMethod === 'CASH' ? 'success' : 'pending',
+        payment_method: data.paymentMethod,
+        payment_details: data.paymentDetails
+      })
+      .select()
+      .single();
 
-    save('products', products);
+    if (txError) throw txError;
 
-    const newTx: Transaction = {
-      id: `TX-${uuid()}`,
-      branchId: data.branchId,
-      cashierId: data.cashierId,
-      subtotal: items.reduce((acc: number, i: any) => acc + (i.price_snapshot * i.quantity), 0),
-      tax: data.tax || 0,
-      discount: data.discount || 0,
-      total: 0,
-      status: data.paymentMethod === 'CASH' ? 'success' : 'pending',
-      paymentMethod: data.paymentMethod,
-      date: new Date().toISOString(),
-      items: items,
-      paymentDetails: data.paymentMethod === 'TRANSFER' ? { bank: data.bank, va_number: `8800${Math.floor(Math.random() * 10000000)}` } : undefined
-    };
-    newTx.total = newTx.subtotal + newTx.tax - newTx.discount;
+    for (const item of data.items) {
+      const { data: prod } = await supabase.from('products').select('*').eq('id', item.productId).single();
+      
+      await supabase.from('transaction_items').insert({
+        transaction_id: tx.id,
+        product_id: item.productId,
+        name: prod.name,
+        quantity: item.quantity,
+        price_snapshot: prod.price,
+        cost_snapshot: prod.cost_price
+      });
 
-    if (data.paymentMethod === 'QRIS') {
-      newTx.paymentDetails = { qris_url: `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=KASIRA-${newTx.id}` };
+      await supabase
+        .from('products')
+        .update({ stock: prod.stock - item.quantity })
+        .eq('id', item.productId);
     }
 
-    transactions.push(newTx);
-    save('transactions', transactions);
-    
-    realtime.broadcast(`owner.${users.find(u => u.role === Role.OWNER)?.id}`, 'TransactionCreated', newTx);
-    
-    return newTx;
+    // Broadcast to owner for real-time dashboard update
+    realtime.broadcast(`owner.${data.ownerId}`, 'TransactionCreated', tx);
+
+    return {
+      id: tx.id,
+      branchId: tx.branch_id,
+      cashierId: tx.cashier_id,
+      subtotal: tx.subtotal,
+      tax: tx.tax,
+      discount: tx.discount,
+      total: tx.total,
+      status: tx.status as PaymentStatus,
+      paymentMethod: tx.payment_method,
+      date: tx.created_at,
+      items: [] 
+    };
   },
 
-  simulateMidtransCallback: async (transactionId: string, status: PaymentStatus) => {
-    const transactions = load('transactions', []);
-    const tx = transactions.find((t: Transaction) => t.id === transactionId);
+  getTransactions: async (branchId: string): Promise<Transaction[]> => {
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*, transaction_items(*)')
+      .eq('branch_id', branchId);
+    if (error) throw error;
+    return (data || []).map(t => ({
+      id: t.id,
+      branchId: t.branch_id,
+      cashierId: t.cashier_id,
+      subtotal: t.subtotal,
+      tax: t.tax,
+      discount: t.discount,
+      total: t.total,
+      status: t.status as PaymentStatus,
+      paymentMethod: t.payment_method,
+      paymentDetails: t.payment_details,
+      date: t.created_at,
+      items: t.transaction_items.map((ti: any) => ({
+        productId: ti.product_id,
+        name: ti.name,
+        quantity: ti.quantity,
+        price_snapshot: ti.price_snapshot,
+        cost_snapshot: ti.cost_snapshot
+      }))
+    }));
+  },
+
+  simulateMidtransCallback: async (txId: string, status: string) => {
+    const { error } = await supabase.from('transactions').update({ status }).eq('id', txId);
+    if (error) throw error;
+    const { data: tx } = await supabase.from('transactions').select('branch_id').eq('id', txId).single();
     if (tx) {
-      tx.status = status;
-      save('transactions', transactions);
-      realtime.broadcast(`branch.${tx.branchId}`, 'PaymentStatusUpdated', { status, transactionId });
+      realtime.broadcast(`branch.${tx.branch_id}`, 'PaymentStatusUpdated', { status, transactionId: txId });
     }
   },
 
@@ -273,49 +333,34 @@ export const api = {
    * STOCK MANAGEMENT
    */
   adjustStock: async (productId: string, amount: number, note: string) => {
-    const products = load('products', []);
-    const p = products.find((prod: Product) => prod.id === productId);
-    if (p) {
-      p.stock += amount;
-      save('products', products);
-      realtime.broadcast(`branch.${p.branchId}`, 'StockUpdated', { productId });
-    }
+    const { data: prod } = await supabase.from('products').select('stock, branch_id').eq('id', productId).single();
+    if (!prod) throw new Error("Product not found");
+    const { error } = await supabase.from('products').update({ stock: prod.stock + amount }).eq('id', productId);
+    if (error) throw error;
+    realtime.broadcast(`branch.${prod.branch_id}`, 'StockUpdated', {});
     return { success: true };
   },
 
   /**
-   * AI ANALYSIS (GEMINI 3 PRO)
+   * REPORTS & ANALYSIS
    */
-  getAIAnalysis: async (data: any) => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
-    const prompt = `Analisis data bisnis POS ini: 
-      Omzet: Rp${data.stats.revenue.toLocaleString()}, 
-      Laba: Rp${data.stats.netProfit.toLocaleString()}, 
-      Transaksi: ${data.stats.orderCount}. 
-      Berikan 3 saran strategis UMKM dalam Bahasa Indonesia yang sangat singkat.`;
-
-    try {
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
-        contents: prompt,
-      });
-      return response.text;
-    } catch (error) {
-      return "Saran AI tidak tersedia saat ini.";
-    }
-  },
-
   getFinancialReport: async (filters: any) => {
-    if (IS_PRODUCTION) return request('/reports/financial', { method: 'POST', body: JSON.stringify(filters) });
-    
-    let tx = load('transactions', []).filter((t: Transaction) => {
-      const isDateMatch = (!filters.startDate || t.date >= filters.startDate) && (!filters.endDate || t.date <= filters.endDate);
-      const isBranchMatch = !filters.branchId || filters.branchId === 'all' || t.branchId === filters.branchId;
-      return t.status === 'success' && isDateMatch && isBranchMatch;
-    });
+    let query = supabase
+      .from('transactions')
+      .select('*, transaction_items(*)')
+      .eq('status', 'success');
 
-    const stats = tx.reduce((acc: any, t: Transaction) => {
-      const cogs = t.items.reduce((sum: number, item: TransactionItem) => sum + (item.cost_snapshot * item.quantity), 0);
+    if (filters.branchId && filters.branchId !== 'all') {
+      query = query.eq('branch_id', filters.branchId);
+    }
+    if (filters.startDate) query = query.gte('created_at', filters.startDate);
+    if (filters.endDate) query = query.lte('created_at', filters.endDate);
+
+    const { data: txs, error } = await query;
+    if (error) throw error;
+
+    const stats = (txs || []).reduce((acc: any, t: any) => {
+      const cogs = t.transaction_items.reduce((sum: number, item: any) => sum + (item.cost_snapshot * item.quantity), 0);
       acc.revenue += t.subtotal;
       acc.cogs += cogs;
       acc.totalDiscount += t.discount;
@@ -327,39 +372,91 @@ export const api = {
     stats.grossProfit = stats.revenue - stats.cogs;
     stats.netProfit = stats.grossProfit - stats.totalDiscount;
 
-    return { transactions: tx, stats };
+    return { 
+      transactions: (txs || []).map((t: any) => ({
+        id: t.id,
+        branchId: t.branch_id,
+        cashierId: t.cashier_id,
+        subtotal: t.subtotal,
+        tax: t.tax,
+        discount: t.discount,
+        total: t.total,
+        status: t.status,
+        paymentMethod: t.payment_method,
+        date: t.created_at,
+        items: t.transaction_items
+      })), 
+      stats 
+    };
   },
 
-  getBranchComparison: async (ownerId: string, startDate?: string, endDate?: string): Promise<BranchPerformance[]> => {
-    if (IS_PRODUCTION) return request(`/reports/branches?owner_id=${ownerId}`);
-    
-    const branches = load('branches', []).filter((b: Branch) => b.ownerId === ownerId);
-    const allTxs = load('transactions', []).filter((t: Transaction) => {
-      const isDateMatch = (!startDate || t.date >= startDate) && (!endDate || t.date <= endDate);
-      return t.status === 'success' && isDateMatch;
-    });
+  getBranchComparison: async (ownerId: string, startDate: string, endDate?: string): Promise<BranchPerformance[]> => {
+    const branches = await api.getBranches(ownerId);
+    const results: BranchPerformance[] = [];
 
-    return branches.map((b: Branch) => {
-      const branchTxs = allTxs.filter((t: Transaction) => t.branchId === b.id);
-      const stats = branchTxs.reduce((acc: any, t: Transaction) => {
-        const cogs = t.items.reduce((sum: number, item: TransactionItem) => sum + (item.cost_snapshot * item.quantity), 0);
-        acc.revenue += t.subtotal;
-        acc.cogs += cogs;
-        acc.orderCount += 1;
-        acc.netProfit += (t.subtotal - cogs - t.discount);
-        return acc;
-      }, { revenue: 0, cogs: 0, orderCount: 0, netProfit: 0 });
-
-      return {
+    for (const branch of branches) {
+      const { stats } = await api.getFinancialReport({ branchId: branch.id, startDate, endDate });
+      results.push({
         ...stats,
-        branchId: b.id,
-        branchName: b.name,
-        grossProfit: stats.revenue - stats.cogs,
-        totalDiscount: 0,
-        totalTax: 0,
+        branchId: branch.id,
+        branchName: branch.name,
         bestSeller: 'Menu Favorit',
-        trend: Math.random() > 0.5 ? 'up' : 'down'
-      };
-    });
+        trend: 'stable'
+      });
+    }
+    return results;
+  },
+
+  getAIAnalysis: async (data: any) => {
+    // Fix: Re-initializing client within the method to ensure fresh environment context if needed
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const prompt = `Analisis data bisnis POS ini: 
+      Omzet: Rp${data.stats.revenue.toLocaleString()}, 
+      Laba: Rp${data.stats.netProfit.toLocaleString()}, 
+      Transaksi: ${data.stats.orderCount}. 
+      Berikan 3 saran strategis UMKM dalam Bahasa Indonesia yang sangat singkat (maksimal 2 kalimat per poin).`;
+
+    try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-pro-preview',
+        contents: prompt,
+      });
+      // Fix: Directly access the .text property as per the latest @google/genai guidelines
+      return response.text;
+    } catch (error) {
+      console.error("AI Analysis Error:", error);
+      return "Analisis AI sedang sibuk. Silakan coba beberapa saat lagi.";
+    }
+  },
+
+  initiateRegistration: async (data: any): Promise<PaymentRecord> => {
+    const orderId = `REG-${Math.random().toString(36).substr(2, 9)}`;
+    const amount = data.package === 'Pro' ? 199000 : 1900000;
+    return {
+      orderId,
+      amount,
+      paymentType: 'qris',
+      qrisUrl: 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=KASIRA-PAYMENT',
+      status: 'pending'
+    };
+  },
+
+  handleRegistrationCallback: async (orderId: string, status: string): Promise<User | null> => {
+    // Logic to update profile status to ACTIVE
+    const { data: profile } = await supabase.from('profiles').select('*').limit(1).single();
+    if (!profile) return null;
+    
+    await supabase.from('profiles').update({ status: AccountStatus.ACTIVE }).eq('id', profile.id);
+    
+    return {
+      id: profile.id,
+      name: profile.name,
+      email: 'user@kasira.id',
+      role: Role.OWNER,
+      businessName: profile.business_name,
+      status: AccountStatus.ACTIVE,
+      packageType: profile.package_type,
+      expiredAt: profile.expired_at,
+    };
   }
 };
