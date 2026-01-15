@@ -24,7 +24,9 @@ export const api = {
         .eq('id', data.user.id)
         .single();
 
-      if (profileError) return null;
+      if (profileError || !profile) {
+        throw new Error("Profil akun tidak ditemukan di database. Silakan hubungi support.");
+      }
 
       return {
         id: profile.id,
@@ -52,7 +54,7 @@ export const api = {
       });
 
       if (authError) throw authError;
-      if (!authData.user) throw new Error("Registrasi gagal di sisi autentikasi.");
+      if (!authData.user) throw new Error("Gagal membuat kredensial.");
 
       // 2. Siapkan data profil
       const profileData = {
@@ -65,15 +67,15 @@ export const api = {
         expired_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
       };
 
-      // 3. Gunakan UPSERT untuk memastikan data masuk/update ke tabel profiles
-      // Upsert akan memasukkan data baru, atau mengupdate jika ID sudah ada
+      // 3. Simpan data ke tabel profiles
       const { error: profileError } = await supabase
         .from('profiles')
-        .upsert(profileData, { onConflict: 'id' });
+        .insert(profileData);
 
       if (profileError) {
-        console.error("Profile DB Error:", profileError);
-        throw new Error(`Gagal menyimpan data ke database: ${profileError.message}. Pastikan RLS Policy sudah disetel.`);
+        // PENTING: Jika gagal simpan profil, batalkan sesi login
+        await supabase.auth.signOut();
+        throw new Error(`Gagal membuat profil: ${profileError.message}. Periksa RLS Policy.`);
       }
 
       return {
@@ -86,7 +88,7 @@ export const api = {
         expiredAt: profileData.expired_at
       };
     } catch (e: any) {
-      console.error("Registration failed:", e.message);
+      console.error("Registration fatal error:", e.message);
       throw e;
     }
   },
@@ -125,7 +127,7 @@ export const api = {
   },
 
   deleteBranch: async (id: string, role: Role) => {
-    if (role !== Role.OWNER) throw new Error("Unauthorized");
+    if (role !== Role.OWNER) throw new Error("Hanya owner yang boleh menghapus cabang.");
     const { error } = await supabase.from('branches').delete().eq('id', id);
     if (error) throw error;
     return { success: true };
@@ -367,7 +369,6 @@ export const api = {
     if (filters.startDate) query = query.gte('created_at', filters.startDate);
     if (filters.endDate) query = query.lte('created_at', filters.endDate);
 
-    const { data: txs, error } = query;
     const { data, error: dbError } = await query;
     if (dbError) throw dbError;
 
@@ -436,7 +437,6 @@ export const api = {
     }
   },
 
-  // Helper untuk memanggil Gemini dengan instance baru setiap saat (sesuai best practice)
   generateAIContent: async (prompt: string) => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({

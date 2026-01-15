@@ -22,56 +22,65 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Mengecek sesi aktif saat inisialisasi menggunakan API V2
     const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        await fetchProfile(session.user.id, session.user.email!);
-      } else {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (data?.session) {
+          const profileFound = await fetchProfile(data.session.user.id, data.session.user.email!);
+          // Jika ada sesi tapi tidak ada profil di DB, paksa logout untuk membersihkan LocalStorage
+          if (!profileFound) {
+            console.warn("Sesi ditemukan tapi profil kosong. Membersihkan sesi...");
+            await handleLogout();
+          }
+        } else {
+          setLoading(false);
+        }
+      } catch (e) {
         setLoading(false);
       }
     };
 
     checkSession();
 
-    // Listener perubahan status autentikasi
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session) {
-        await fetchProfile(session.user.id, session.user.email!);
-      } else {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        const profileFound = await fetchProfile(session.user.id, session.user.email!);
+        if (!profileFound) await handleLogout();
+      } else if (event === 'SIGNED_OUT') {
         setUser(null);
         setLoading(false);
       }
     });
 
-    return () => {
-      subscription.unsubscribe();
-    };
+    return () => subscription.unsubscribe();
   }, []);
 
-  const fetchProfile = async (id: string, email: string) => {
+  const fetchProfile = async (id: string, email: string): Promise<boolean> => {
     try {
-      const { data: profile } = await supabase
+      const { data: profile, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', id)
         .single();
       
-      if (profile) {
-        setUser({
-          id: profile.id,
-          name: profile.name,
-          email: email,
-          role: profile.role as Role,
-          businessName: profile.business_name,
-          status: profile.status as AccountStatus,
-          packageType: profile.package_type,
-          expiredAt: profile.expired_at,
-          branchId: profile.branch_id
-        });
+      if (error || !profile) {
+        return false;
       }
+      
+      setUser({
+        id: profile.id,
+        name: profile.name,
+        email: email,
+        role: profile.role as Role,
+        businessName: profile.business_name,
+        status: profile.status as AccountStatus,
+        packageType: profile.package_type,
+        expiredAt: profile.expired_at,
+        branchId: profile.branch_id
+      });
+      return true;
     } catch (e) {
-      console.error("Error fetching profile", e);
+      return false;
     } finally {
       setLoading(false);
     }
@@ -79,7 +88,9 @@ const App: React.FC = () => {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
+    localStorage.clear(); // Bersihkan semua residu localstorage
     setUser(null);
+    setLoading(false);
   };
 
   if (loading) {
@@ -87,7 +98,7 @@ const App: React.FC = () => {
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-white/50 font-bold uppercase tracking-widest text-[10px]">Menghubungkan ke KASIRA Cloud...</p>
+          <p className="text-white/50 font-bold uppercase tracking-widest text-[10px]">Sinkronisasi Data KASIRA...</p>
         </div>
       </div>
     );
@@ -100,7 +111,6 @@ const App: React.FC = () => {
         <Route path="/login" element={<Login onLogin={(u) => setUser(u)} />} />
         <Route path="/register" element={<Register onRegister={(u) => setUser(u)} />} />
 
-        {/* Owner Routes */}
         <Route 
           path="/owner/*" 
           element={
@@ -118,7 +128,6 @@ const App: React.FC = () => {
           } 
         />
 
-        {/* Kasir Routes */}
         <Route 
           path="/kasir/*" 
           element={

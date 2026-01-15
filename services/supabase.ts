@@ -1,40 +1,60 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-// Mengambil nilai dari process.env yang disuntikkan oleh Vite
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 
-/**
- * Validasi kredensial sebelum inisialisasi.
- * Jika URL atau Key tidak tersedia (misal: belum disetel di environment),
- * kita mengembalikan Proxy agar aplikasi tidak crash saat pertama kali dimuat (runtime error),
- * tetapi akan memberikan pesan error yang jelas saat mencoba mengakses database.
- */
 const isConfigured = 
   supabaseUrl && 
   supabaseAnonKey && 
   supabaseUrl !== 'undefined' && 
+  supabaseAnonKey !== '' &&
   supabaseAnonKey !== 'undefined';
 
 export const supabase = isConfigured
   ? createClient(supabaseUrl, supabaseAnonKey)
   : new Proxy({} as any, {
       get(_, prop) {
-        // Penanganan khusus untuk auth agar pemanggilan seperti supabase.auth.getSession() tidak langsung crash
         if (prop === 'auth') {
-          return new Proxy({}, {
-            get: () => () => {
-              console.error("Supabase Error: SUPABASE_URL atau SUPABASE_ANON_KEY belum dikonfigurasi.");
-              return Promise.resolve({ data: { session: null }, error: new Error("Missing credentials") });
+          return {
+            getSession: () => {
+              console.warn("Supabase: SUPABASE_URL belum dikonfigurasi.");
+              return Promise.resolve({ data: { session: null }, error: null });
+            },
+            signInWithPassword: () => {
+              return Promise.reject(new Error("Supabase credentials missing"));
+            },
+            signUp: () => {
+              return Promise.reject(new Error("Supabase credentials missing"));
+            },
+            signOut: () => Promise.resolve({ error: null }),
+            onAuthStateChange: () => {
+              return {
+                data: {
+                  subscription: {
+                    unsubscribe: () => {}
+                  }
+                }
+              };
             }
-          });
+          };
         }
-        // Penanganan umum untuk query (from, select, dll)
-        return () => {
-          throw new Error(
-            "Koneksi Supabase Gagal: Pastikan variabel lingkungan SUPABASE_URL dan SUPABASE_ANON_KEY sudah disetel di environment Anda (misal: di .env atau dashboard deployment)."
-          );
-        };
+        
+        // Default handler untuk from('table').select()...
+        return () => ({
+          from: () => ({
+            select: () => ({
+              eq: () => ({
+                single: () => Promise.resolve({ data: null, error: new Error("Missing credentials") }),
+                limit: () => ({ single: () => Promise.resolve({ data: null, error: new Error("Missing credentials") }) })
+              }),
+              in: () => Promise.resolve({ data: [], error: null })
+            }),
+            insert: () => Promise.resolve({ data: null, error: new Error("Missing credentials") }),
+            upsert: () => Promise.resolve({ data: null, error: new Error("Missing credentials") }),
+            update: () => ({ eq: () => Promise.resolve({ error: new Error("Missing credentials") }) }),
+            delete: () => ({ eq: () => Promise.resolve({ error: new Error("Missing credentials") }) })
+          })
+        });
       }
     });
