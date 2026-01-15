@@ -70,7 +70,7 @@ const App: React.FC = () => {
 
   const handleLogout = async () => {
     if (isDbConfigured) await supabase.auth.signOut();
-    localStorage.clear(); 
+    localStorage.clear();
     setUser(null);
   };
 
@@ -86,18 +86,14 @@ const App: React.FC = () => {
 
   return (
     <HashRouter>
-      {!isDbConfigured && (
-        <div className="fixed top-0 left-0 right-0 bg-amber-500 text-slate-900 py-1 px-4 text-[9px] font-black uppercase tracking-[0.2em] text-center z-[9999] flex items-center justify-center gap-2">
-          <Database size={10} /> Mode Demo: Database Tidak Terhubung. Data Tidak Akan Tersimpan Secara Permanen.
-        </div>
-      )}
+      {/* Demo Warning Removed for Production */}
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<Login onLogin={(u) => setUser(u)} />} />
         <Route path="/register" element={<Register onRegister={(u) => setUser(u)} />} />
 
-        <Route 
-          path="/owner/*" 
+        <Route
+          path="/owner/*"
           element={
             user?.role === Role.OWNER ? (
               <Routes>
@@ -110,11 +106,11 @@ const App: React.FC = () => {
                 <Route path="/performance" element={<OwnerPerformance user={user} onLogout={handleLogout} />} />
               </Routes>
             ) : <Navigate to="/login" />
-          } 
+          }
         />
 
-        <Route 
-          path="/kasir/*" 
+        <Route
+          path="/kasir/*"
           element={
             user?.role === Role.KASIR ? (
               <Routes>
@@ -122,7 +118,7 @@ const App: React.FC = () => {
                 <Route path="/history" element={<KasirHistory user={user} onLogout={handleLogout} />} />
               </Routes>
             ) : <Navigate to="/login" />
-          } 
+          }
         />
 
         <Route path="*" element={<Navigate to="/" />} />
