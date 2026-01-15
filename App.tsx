@@ -58,7 +58,8 @@ const App: React.FC = () => {
     init();
 
     if (isDbConfigured) {
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // Menambahkan tipe :any secara eksplisit untuk memperbaiki error TS7006 saat build
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event: any, _session: any) => {
         if (event === 'SIGNED_OUT') {
           setUser(null);
         }
