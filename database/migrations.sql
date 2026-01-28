@@ -333,8 +333,7 @@ CREATE POLICY "Owners can insert categories" ON categories
   FOR INSERT WITH CHECK (
     EXISTS (
       SELECT 1 FROM branches b
-      INNER JOIN profiles p ON b.owner_id = p.id
-      WHERE p.id = auth.uid() AND p.role = 'owner' AND b.id = branch_id
+      WHERE b.id = branch_id AND b.owner_id = auth.uid()
     )
   );
 
@@ -343,8 +342,7 @@ CREATE POLICY "Owners can update categories" ON categories
   FOR UPDATE USING (
     EXISTS (
       SELECT 1 FROM branches b
-      INNER JOIN profiles p ON b.owner_id = p.id
-      WHERE p.id = auth.uid() AND p.role = 'owner' AND b.id = branch_id
+      WHERE b.id = branch_id AND b.owner_id = auth.uid()
     )
   );
 
@@ -353,8 +351,7 @@ CREATE POLICY "Owners can delete categories" ON categories
   FOR DELETE USING (
     EXISTS (
       SELECT 1 FROM branches b
-      INNER JOIN profiles p ON b.owner_id = p.id
-      WHERE p.id = auth.uid() AND p.role = 'owner' AND b.id = branch_id
+      WHERE b.id = branch_id AND b.owner_id = auth.uid()
     )
   );
 
@@ -379,8 +376,7 @@ CREATE POLICY "Owners can insert products" ON products
   FOR INSERT WITH CHECK (
     EXISTS (
       SELECT 1 FROM branches b
-      INNER JOIN profiles p ON b.owner_id = p.id
-      WHERE p.id = auth.uid() AND p.role = 'owner' AND b.id = branch_id
+      WHERE b.id = branch_id AND b.owner_id = auth.uid()
     )
   );
 
@@ -398,8 +394,7 @@ CREATE POLICY "Owners can delete products" ON products
   FOR DELETE USING (
     EXISTS (
       SELECT 1 FROM branches b
-      INNER JOIN profiles p ON b.owner_id = p.id
-      WHERE p.id = auth.uid() AND p.role = 'owner' AND b.id = branch_id
+      WHERE b.id = branch_id AND b.owner_id = auth.uid()
     )
   );
 
