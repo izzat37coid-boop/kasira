@@ -340,18 +340,20 @@ CREATE POLICY "Owners can insert categories" ON categories
 DROP POLICY IF EXISTS "Owners can update categories" ON categories;
 CREATE POLICY "Owners can update categories" ON categories
   FOR UPDATE USING (
-    EXISTS (
-      SELECT 1 FROM branches b
-      WHERE b.id = branch_id AND b.owner_id = auth.uid()
+    branch_id IN (
+      SELECT branch_id FROM profiles WHERE id = auth.uid()
+      UNION
+      SELECT id FROM branches WHERE owner_id = auth.uid()
     )
   );
 
 DROP POLICY IF EXISTS "Owners can delete categories" ON categories;
 CREATE POLICY "Owners can delete categories" ON categories
   FOR DELETE USING (
-    EXISTS (
-      SELECT 1 FROM branches b
-      WHERE b.id = branch_id AND b.owner_id = auth.uid()
+    branch_id IN (
+      SELECT branch_id FROM profiles WHERE id = auth.uid()
+      UNION
+      SELECT id FROM branches WHERE owner_id = auth.uid()
     )
   );
 
@@ -383,18 +385,20 @@ CREATE POLICY "Owners can insert products" ON products
 DROP POLICY IF EXISTS "Owners can update products" ON products;
 CREATE POLICY "Owners can update products" ON products
   FOR UPDATE USING (
-    EXISTS (
-      SELECT 1 FROM branches b
-      WHERE b.id = branch_id AND b.owner_id = auth.uid()
+    branch_id IN (
+      SELECT branch_id FROM profiles WHERE id = auth.uid()
+      UNION
+      SELECT id FROM branches WHERE owner_id = auth.uid()
     )
   );
 
 DROP POLICY IF EXISTS "Owners can delete products" ON products;
 CREATE POLICY "Owners can delete products" ON products
   FOR DELETE USING (
-    EXISTS (
-      SELECT 1 FROM branches b
-      WHERE b.id = branch_id AND b.owner_id = auth.uid()
+    branch_id IN (
+      SELECT branch_id FROM profiles WHERE id = auth.uid()
+      UNION
+      SELECT id FROM branches WHERE owner_id = auth.uid()
     )
   );
 
