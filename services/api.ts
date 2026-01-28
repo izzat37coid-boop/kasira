@@ -1,8 +1,9 @@
 
+import { createClient } from '@supabase/supabase-js';
 import { User, Role, Branch, Product, Transaction, BranchPerformance, AccountStatus, PaymentStatus, PaymentRecord, Category } from '../types';
 import { supabase, isDbConfigured } from './supabase';
 import { realtime } from './realtime';
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 // Mock Data untuk Demo Mode
 const MOCK_USER: User = {
@@ -31,7 +32,7 @@ export const api = {
   // =====================================================
   // AUTHENTICATION
   // =====================================================
-  
+
   login: async (email: string, password?: string): Promise<User | null> => {
     if (!isDbConfigured) {
       console.warn("API: Database not configured. Using Mock Login.");
@@ -40,18 +41,18 @@ export const api = {
     try {
       const { data, error: authError } = await supabase.auth.signInWithPassword({
         email,
-        password: password || 'password123', 
+        password: password || 'password123',
       });
       if (authError) throw authError;
-      
+
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', data.user!.id)
         .single();
-      
+
       if (profileError) throw profileError;
-      
+
       return {
         id: profile.id,
         name: profile.name,
@@ -63,25 +64,25 @@ export const api = {
         expiredAt: profile.expired_at,
         branchId: profile.branch_id
       };
-    } catch (e: any) { 
+    } catch (e: any) {
       console.error('Login error:', e);
-      throw e; 
+      throw e;
     }
   },
 
   registerTrial: async (userData: any): Promise<User> => {
     if (!isDbConfigured) return MOCK_USER;
-    
+
     try {
       // 1. Create auth user
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: userData.email,
         password: userData.password,
       });
-      
+
       if (authError) throw authError;
       if (!authData.user) throw new Error('Failed to create user');
-      
+
       // 2. Create profile
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
@@ -96,9 +97,9 @@ export const api = {
         })
         .select()
         .single();
-      
+
       if (profileError) throw profileError;
-      
+
       // 3. Create trial subscription
       await supabase.from('subscriptions').insert({
         user_id: authData.user.id,
@@ -107,7 +108,7 @@ export const api = {
         end_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
         status: 'active'
       });
-      
+
       return {
         id: profile.id,
         name: profile.name,
@@ -127,19 +128,19 @@ export const api = {
   // =====================================================
   // BRANCHES MANAGEMENT (Owner Only)
   // =====================================================
-  
+
   getBranches: async (ownerId: string): Promise<Branch[]> => {
     if (!isDbConfigured) return MOCK_BRANCHES;
-    
+
     try {
       const { data, error } = await supabase
         .from('branches')
         .select('*')
         .eq('owner_id', ownerId)
         .order('created_at', { ascending: false });
-      
+
       if (error) throw error;
-      
+
       return (data || []).map((b: any) => ({
         id: b.id,
         name: b.name,
@@ -154,7 +155,7 @@ export const api = {
 
   addBranch: async (branchData: any): Promise<Branch> => {
     if (!isDbConfigured) return { id: Math.random().toString(), ...branchData };
-    
+
     try {
       const { data, error } = await supabase
         .from('branches')
@@ -165,9 +166,9 @@ export const api = {
         })
         .select()
         .single();
-      
+
       if (error) throw error;
-      
+
       return {
         id: data.id,
         name: data.name,
@@ -182,20 +183,20 @@ export const api = {
 
   deleteBranch: async (id: string, role?: Role): Promise<{ success: boolean }> => {
     if (!isDbConfigured) return { success: true };
-    
+
     // Only owners can delete branches
     if (role !== Role.OWNER) {
       throw new Error('Unauthorized: Only owners can delete branches');
     }
-    
+
     try {
       const { error } = await supabase
         .from('branches')
         .delete()
         .eq('id', id);
-      
+
       if (error) throw error;
-      
+
       return { success: true };
     } catch (e: any) {
       console.error('Delete branch error:', e);
@@ -206,21 +207,21 @@ export const api = {
   // =====================================================
   // PRODUCTS MANAGEMENT
   // =====================================================
-  
+
   getProducts: async (branchId?: string): Promise<Product[]> => {
     if (!isDbConfigured) return MOCK_PRODUCTS;
-    
+
     try {
       let query = supabase.from('products').select('*');
-      
+
       if (branchId && branchId !== 'all') {
         query = query.eq('branch_id', branchId);
       }
-      
+
       const { data, error } = await query.order('created_at', { ascending: false });
-      
+
       if (error) throw error;
-      
+
       return (data || []).map((p: any) => ({
         id: p.id,
         name: p.name,
@@ -239,7 +240,7 @@ export const api = {
 
   addProduct: async (productData: any): Promise<Product> => {
     if (!isDbConfigured) return { id: Math.random().toString(), ...productData };
-    
+
     try {
       const { data, error } = await supabase
         .from('products')
@@ -254,9 +255,9 @@ export const api = {
         })
         .select()
         .single();
-      
+
       if (error) throw error;
-      
+
       return {
         id: data.id,
         name: data.name,
@@ -275,12 +276,12 @@ export const api = {
 
   updateProduct: async (id: string, productData: any, role?: Role): Promise<{ success: boolean }> => {
     if (!isDbConfigured) return { success: true };
-    
+
     // Only owners can update products
     if (role !== Role.OWNER) {
       throw new Error('Unauthorized: Only owners can update products');
     }
-    
+
     try {
       const { error } = await supabase
         .from('products')
@@ -293,9 +294,9 @@ export const api = {
           image_url: productData.imageUrl
         })
         .eq('id', id);
-      
+
       if (error) throw error;
-      
+
       return { success: true };
     } catch (e: any) {
       console.error('Update product error:', e);
@@ -305,20 +306,20 @@ export const api = {
 
   deleteProduct: async (id: string, role?: Role): Promise<{ success: boolean }> => {
     if (!isDbConfigured) return { success: true };
-    
+
     // Only owners can delete products
     if (role !== Role.OWNER) {
       throw new Error('Unauthorized: Only owners can delete products');
     }
-    
+
     try {
       const { error } = await supabase
         .from('products')
         .delete()
         .eq('id', id);
-      
+
       if (error) throw error;
-      
+
       return { success: true };
     } catch (e: any) {
       console.error('Delete product error:', e);
@@ -329,7 +330,7 @@ export const api = {
   // =====================================================
   // CATEGORIES
   // =====================================================
-  
+
   getCategories: async (branchId?: string): Promise<Category[]> => {
     if (!isDbConfigured) {
       return [
@@ -338,18 +339,18 @@ export const api = {
         { id: '3', name: 'Pastry', branchId: 'all' }
       ];
     }
-    
+
     try {
       let query = supabase.from('categories').select('*');
-      
+
       if (branchId && branchId !== 'all') {
         query = query.eq('branch_id', branchId);
       }
-      
+
       const { data, error } = await query;
-      
+
       if (error) throw error;
-      
+
       return (data || []).map((c: any) => ({
         id: c.id,
         name: c.name,
@@ -364,15 +365,15 @@ export const api = {
   // =====================================================
   // STOCK MANAGEMENT (Owner Only)
   // =====================================================
-  
+
   adjustStock: async (productId: string, amount: number, note?: string): Promise<{ success: boolean }> => {
     if (!isDbConfigured) return { success: true };
-    
+
     try {
       // Get current user
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
-      
+
       // Call database function for atomic stock adjustment
       const { data, error } = await supabase.rpc('adjust_stock_with_log', {
         p_product_id: productId,
@@ -380,9 +381,9 @@ export const api = {
         p_quantity_change: amount,
         p_note: note || null
       });
-      
+
       if (error) throw error;
-      
+
       return { success: true };
     } catch (e: any) {
       console.error('Adjust stock error:', e);
@@ -393,7 +394,7 @@ export const api = {
   // =====================================================
   // TRANSACTIONS (Kasir & Owner)
   // =====================================================
-  
+
   createTransaction: async (txData: any): Promise<Transaction> => {
     if (!isDbConfigured) {
       return {
@@ -410,28 +411,35 @@ export const api = {
         items: txData.items
       };
     }
-    
+
     try {
       // Call database function for atomic transaction creation
       const { data, error } = await supabase.rpc('create_transaction_atomic', {
         p_branch_id: txData.branchId,
         p_cashier_id: txData.cashierId,
-        p_items: JSON.stringify(txData.items),
+        p_items: txData.items, // Supabase client handles JSONB serialization automatically
         p_payment_method: txData.paymentMethod,
         p_bank: txData.bank || null,
         p_tax: txData.tax || 0,
         p_discount: txData.discount || 0
       });
-      
+
       if (error) throw error;
-      
+
       // Fetch transaction items
       const { data: items } = await supabase
         .from('transaction_items')
         .select('*')
         .eq('transaction_id', data.id);
-      
-      return {
+
+      // Get ownerId for realtime update
+      const { data: branch } = await supabase
+        .from('branches')
+        .select('owner_id')
+        .eq('id', data.branchId)
+        .single();
+
+      const fullTransaction = {
         id: data.id,
         branchId: data.branchId,
         cashierId: data.cashierId,
@@ -451,6 +459,14 @@ export const api = {
           cost_snapshot: i.cost_snapshot
         }))
       };
+
+      // Trigger update to Owner Dashboard
+      if (branch?.owner_id) {
+        realtime.trigger(`owner.${branch.owner_id}`, 'TransactionCreated', fullTransaction);
+      }
+
+      return fullTransaction;
+
     } catch (e: any) {
       console.error('Create transaction error:', e);
       throw e;
@@ -459,7 +475,7 @@ export const api = {
 
   getTransactions: async (branchId: string): Promise<Transaction[]> => {
     if (!isDbConfigured) return [];
-    
+
     try {
       const { data, error } = await supabase
         .from('transactions')
@@ -467,9 +483,9 @@ export const api = {
         .eq('branch_id', branchId)
         .order('date', { ascending: false })
         .limit(100);
-      
+
       if (error) throw error;
-      
+
       return (data || []).map((t: any) => ({
         id: t.id,
         branchId: t.branch_id,
@@ -498,30 +514,30 @@ export const api = {
 
   simulateMidtransCallback: async (transactionId: string, status: string): Promise<{ success: boolean }> => {
     if (!isDbConfigured) return { success: true };
-    
+
     try {
       // Call database function to update payment status
       const { error } = await supabase.rpc('update_payment_status', {
         p_transaction_id: transactionId,
         p_status: status
       });
-      
+
       if (error) throw error;
-      
+
       // Trigger realtime event
       const { data: tx } = await supabase
         .from('transactions')
         .select('branch_id')
         .eq('id', transactionId)
         .single();
-      
+
       if (tx) {
         realtime.trigger(`branch.${tx.branch_id}`, 'PaymentStatusUpdated', {
           transactionId,
           status
         });
       }
-      
+
       return { success: true };
     } catch (e: any) {
       console.error('Simulate callback error:', e);
@@ -529,33 +545,128 @@ export const api = {
     }
   },
 
+  getFinancialReport: async (params: { ownerId: string; branchId?: string; startDate: string; endDate: string }): Promise<{ transactions: Transaction[]; stats: any }> => {
+    if (!isDbConfigured) {
+      return {
+        transactions: [],
+        stats: { revenue: 0, cogs: 0, grossProfit: 0, netProfit: 0, totalDiscount: 0, totalTax: 0, orderCount: 0 }
+      };
+    }
+
+    try {
+      // Get all owner's branches
+      const { data: branches } = await supabase
+        .from('branches')
+        .select('id')
+        .eq('owner_id', params.ownerId);
+
+      if (!branches || branches.length === 0) {
+        return {
+          transactions: [],
+          stats: { revenue: 0, cogs: 0, grossProfit: 0, netProfit: 0, totalDiscount: 0, totalTax: 0, orderCount: 0 }
+        };
+      }
+
+      const branchIds = branches.map((b: any) => b.id);
+
+      // Build query
+      let query = supabase
+        .from('transactions')
+        .select('*, transaction_items(*)')
+        .in('branch_id', params.branchId && params.branchId !== 'all' ? [params.branchId] : branchIds)
+        .gte('date', params.startDate)
+        .lte('date', params.endDate)
+        .order('date', { ascending: false });
+
+      const { data, error } = await query;
+
+      if (error) throw error;
+
+      const transactions: Transaction[] = (data || []).map((t: any) => ({
+        id: t.id,
+        branchId: t.branch_id,
+        cashierId: t.cashier_id,
+        subtotal: t.subtotal,
+        tax: t.tax,
+        discount: t.discount,
+        total: t.total,
+        status: t.status as PaymentStatus,
+        paymentMethod: t.payment_method,
+        paymentDetails: t.payment_details,
+        date: t.date,
+        items: (t.transaction_items || []).map((i: any) => ({
+          productId: i.product_id,
+          name: i.name,
+          quantity: i.quantity,
+          price_snapshot: i.price_snapshot,
+          cost_snapshot: i.cost_snapshot
+        }))
+      }));
+
+      // Calculate stats
+      let revenue = 0;
+      let cogs = 0;
+      let totalDiscount = 0;
+      let totalTax = 0;
+
+      transactions.forEach(t => {
+        revenue += t.subtotal;
+        totalDiscount += t.discount;
+        totalTax += t.tax;
+        t.items.forEach((i: any) => {
+          cogs += i.cost_snapshot * i.quantity;
+        });
+      });
+
+      const grossProfit = revenue - cogs;
+      const netProfit = grossProfit - totalDiscount;
+
+      return {
+        transactions,
+        stats: {
+          revenue,
+          cogs,
+          grossProfit,
+          netProfit,
+          totalDiscount,
+          totalTax,
+          orderCount: transactions.length
+        }
+      };
+
+    } catch (e: any) {
+      console.error('Get financial report error:', e);
+      throw e;
+    }
+  },
+
   // =====================================================
   // STAFF MANAGEMENT (Owner Only)
   // =====================================================
-  
+
   getStaff: async (ownerId: string): Promise<User[]> => {
     if (!isDbConfigured) return [];
-    
+
     try {
       // Get all branches owned by this owner
       const { data: branches } = await supabase
         .from('branches')
         .select('id')
         .eq('owner_id', ownerId);
-      
+
       if (!branches || branches.length === 0) return [];
-      
+
       const branchIds = branches.map(b => b.id);
-      
+
       // Get all staff in these branches
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('role', 'kasir')
         .in('branch_id', branchIds);
-      
+
       if (error) throw error;
-      
+
       return (data || []).map((s: any) => ({
         id: s.id,
         name: s.name,
@@ -569,31 +680,49 @@ export const api = {
     }
   },
 
+
+
+
   addStaff: async (staffData: any): Promise<{ success: boolean }> => {
     if (!isDbConfigured) return { success: true };
-    
+
     try {
+      // Use Isolated Client for creating user to prevent session hijacking (logout)
+      // We reconstruct the client just for this operation with non-persistent session
+      const tempClient = createClient(
+        (import.meta as any).env.VITE_SUPABASE_URL,
+        (import.meta as any).env.VITE_SUPABASE_ANON_KEY,
+        {
+          auth: {
+            persistSession: false,
+            autoRefreshToken: false,
+            detectSessionInUrl: false
+          }
+        }
+      );
+
       // Create auth user
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+      const { data: authData, error: authError } = await tempClient.auth.signUp({
         email: staffData.email,
         password: staffData.password,
       });
-      
+
       if (authError) throw authError;
       if (!authData.user) throw new Error('Failed to create user');
-      
-      // Create profile
+
+      // Create profile using Main Client (Owner Context)
       const { error: profileError } = await supabase
         .from('profiles')
         .insert({
           id: authData.user.id,
           name: staffData.name,
-          role: 'kasir',
-          branch_id: staffData.branchId
+          role: 'kasir', // Hardcode role for safety
+          branch_id: staffData.branchId,
+          status: 'active'
         });
-      
+
       if (profileError) throw profileError;
-      
+
       return { success: true };
     } catch (e: any) {
       console.error('Add staff error:', e);
@@ -601,20 +730,22 @@ export const api = {
     }
   },
 
+
+
   deleteStaff: async (id: string, role?: Role): Promise<{ success: boolean }> => {
     if (!isDbConfigured) return { success: true };
-    
+
     // Only owners can delete staff
     if (role !== Role.OWNER) {
       throw new Error('Unauthorized: Only owners can delete staff');
     }
-    
+
     try {
       // Delete from auth.users will cascade to profiles
       const { error } = await supabase.auth.admin.deleteUser(id);
-      
+
       if (error) throw error;
-      
+
       return { success: true };
     } catch (e: any) {
       console.error('Delete staff error:', e);
@@ -625,98 +756,31 @@ export const api = {
   // =====================================================
   // REPORTS & ANALYTICS (Owner Only)
   // =====================================================
-  
-  getFinancialReport: async (filters: any) => {
-    if (!isDbConfigured) {
-      return {
-        transactions: [],
-        stats: {
-          revenue: 15450000,
-          cogs: 6200000,
-          grossProfit: 9250000,
-          netProfit: 8500000,
-          totalDiscount: 750000,
-          totalTax: 1699500,
-          orderCount: 142
-        }
-      };
-    }
-    
-    try {
-      let query = supabase
-        .from('transactions')
-        .select('*, transaction_items(*)')
-        .eq('status', 'success');
-      
-      if (filters.branchId && filters.branchId !== 'all') {
-        query = query.eq('branch_id', filters.branchId);
-      }
-      
-      if (filters.startDate) {
-        query = query.gte('date', filters.startDate);
-      }
-      
-      if (filters.endDate) {
-        query = query.lte('date', filters.endDate);
-      }
-      
-      const { data, error } = await query;
-      
-      if (error) throw error;
-      
-      const stats = (data || []).reduce((acc: any, t: any) => {
-        const cogs = t.transaction_items.reduce((sum: number, item: any) => 
-          sum + (item.cost_snapshot * item.quantity), 0
-        );
-        
-        acc.revenue += t.subtotal;
-        acc.cogs += cogs;
-        acc.totalDiscount += t.discount;
-        acc.totalTax += t.tax;
-        acc.orderCount += 1;
-        
-        return acc;
-      }, {
-        revenue: 0,
-        cogs: 0,
-        grossProfit: 0,
-        netProfit: 0,
-        totalDiscount: 0,
-        totalTax: 0,
-        orderCount: 0
-      });
-      
-      stats.grossProfit = stats.revenue - stats.cogs;
-      stats.netProfit = stats.grossProfit - stats.totalDiscount;
-      
-      return { transactions: data || [], stats };
-    } catch (e: any) {
-      console.error('Get financial report error:', e);
-      throw e;
-    }
-  },
+
+
 
   getBranchComparison: async (ownerId: string, startDate: string, endDate?: string): Promise<BranchPerformance[]> => {
     if (!isDbConfigured) return [];
-    
+
     try {
       // Get all branches
       const { data: branches } = await supabase
         .from('branches')
         .select('*')
         .eq('owner_id', ownerId);
-      
+
       if (!branches) return [];
-      
+
       const results: BranchPerformance[] = [];
-      
+
       for (const branch of branches) {
         const report = await api.getFinancialReport({
+          ownerId,
           branchId: branch.id,
           startDate,
-          endDate
+          endDate: endDate || new Date().toISOString()
         });
-        
+
         results.push({
           branchId: branch.id,
           branchName: branch.name,
@@ -725,7 +789,7 @@ export const api = {
           trend: 'stable'
         });
       }
-      
+
       return results;
     } catch (e: any) {
       console.error('Get branch comparison error:', e);
@@ -736,7 +800,7 @@ export const api = {
   // =====================================================
   // PAYMENT & SUBSCRIPTION
   // =====================================================
-  
+
   initiateRegistration: async (paymentData: any): Promise<PaymentRecord> => {
     if (!isDbConfigured) {
       return {
@@ -746,10 +810,10 @@ export const api = {
         status: 'pending'
       };
     }
-    
+
     try {
       const orderId = 'ORDER-' + Date.now();
-      
+
       const { data, error } = await supabase
         .from('payment_records')
         .insert({
@@ -762,25 +826,25 @@ export const api = {
         })
         .select()
         .single();
-      
+
       if (error) throw error;
-      
+
       // Generate VA or QRIS
       let paymentDetails: any = {};
-      
+
       if (paymentData.paymentType === 'va') {
         paymentDetails.va_number = paymentData.bank + LPAD(Math.floor(Math.random() * 10000000000).toString(), 10, '0');
         paymentDetails.bank = paymentData.bank;
       } else {
         paymentDetails.qris_url = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=QRIS_${orderId}`;
       }
-      
+
       // Update with payment details
       await supabase
         .from('payment_records')
         .update(paymentDetails)
         .eq('id', data.id);
-      
+
       return {
         orderId: data.order_id,
         amount: data.amount,
@@ -798,7 +862,7 @@ export const api = {
 
   handleRegistrationCallback: async (orderId: string, status?: string): Promise<User> => {
     if (!isDbConfigured) return MOCK_USER;
-    
+
     try {
       // Update payment record
       const { data: payment, error: paymentError } = await supabase
@@ -807,9 +871,9 @@ export const api = {
         .eq('order_id', orderId)
         .select()
         .single();
-      
+
       if (paymentError) throw paymentError;
-      
+
       // Update user subscription
       const { data: profile } = await supabase
         .from('profiles')
@@ -821,7 +885,7 @@ export const api = {
         .eq('id', payment.user_id)
         .select()
         .single();
-      
+
       return {
         id: profile.id,
         name: profile.name,
@@ -841,18 +905,29 @@ export const api = {
   // =====================================================
   // AI ANALYSIS
   // =====================================================
-  
+
   getAIAnalysis: async (data: any) => {
     try {
-      const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
       if (!apiKey) {
         return "Gunakan strategi bundle produk untuk meningkatkan basket size dan optimalkan jam operasional pada waktu sibuk.";
       }
+
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+
+      const prompt = `Kamu adalah konsultan bisnis UMKM yang ahli. Analisis data bisnis POS berikut:
       
-      const ai = new GoogleGenAI({ apiKey });
-      const prompt = `Analisis data bisnis POS ini: Omzet: Rp${data.stats.revenue.toLocaleString()}, Laba: Rp${data.stats.netProfit.toLocaleString()}. Berikan 3 saran strategis UMKM Bahasa Indonesia sangat singkat.`;
-      const response = await ai.models.generateContent({ model: 'gemini-2.0-flash-exp', contents: prompt });
-      return response.text;
+Omzet: Rp${data.stats.revenue.toLocaleString('id-ID')}
+Laba Bersih: Rp${data.stats.netProfit.toLocaleString('id-ID')}
+COGS: Rp${data.stats.cogs.toLocaleString('id-ID')}
+Jumlah Transaksi: ${data.stats.orderCount}
+
+Berikan 3 saran strategis yang konkret dan dapat langsung diterapkan untuk meningkatkan performa bisnis. Gunakan Bahasa Indonesia, jawab dengan singkat dan padat (maksimal 3 kalimat per saran).`;
+
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      return response.text();
     } catch (e) {
       console.error('AI Analysis error:', e);
       return "Gunakan strategi bundle produk untuk meningkatkan basket size dan optimalkan jam operasional pada waktu sibuk.";

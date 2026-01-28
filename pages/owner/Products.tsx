@@ -4,25 +4,25 @@ import Layout from '../../components/Layout';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import { User, Product, Branch, Role, Category } from '../../types';
 import { api } from '../../services/api';
-import { 
-  Plus, 
-  Package, 
-  Search, 
-  Filter, 
-  Trash2, 
-  Edit2, 
-  CheckCircle, 
-  AlertCircle, 
-  X, 
-  ImageIcon, 
+import {
+  Plus,
+  Package,
+  Search,
+  Filter,
+  Trash2,
+  Edit2,
+  CheckCircle,
+  AlertCircle,
+  X,
+  ImageIcon,
   ChevronRight,
   Camera,
   Layers
 } from 'lucide-react';
 
-interface Props { 
-  user: User; 
-  onLogout: () => void; 
+interface Props {
+  user: User;
+  onLogout: () => void;
 }
 
 const OwnerProducts: React.FC<Props> = ({ user, onLogout }) => {
@@ -32,7 +32,7 @@ const OwnerProducts: React.FC<Props> = ({ user, onLogout }) => {
   const [showModal, setShowModal] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  
+
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -43,12 +43,12 @@ const OwnerProducts: React.FC<Props> = ({ user, onLogout }) => {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
 
   const initialForm = {
-    name: '', 
-    category: '', 
-    price: '', 
-    costPrice: '', 
-    stock: '', 
-    branchId: '', 
+    name: '',
+    category: '',
+    price: '',
+    costPrice: '',
+    stock: '',
+    branchId: '',
     imageUrl: ''
   };
   const [formData, setFormData] = useState(initialForm);
@@ -58,8 +58,8 @@ const OwnerProducts: React.FC<Props> = ({ user, onLogout }) => {
     id: null
   });
 
-  useEffect(() => { 
-    loadData(); 
+  useEffect(() => {
+    loadData();
   }, []);
 
   const loadData = async () => {
@@ -76,9 +76,10 @@ const OwnerProducts: React.FC<Props> = ({ user, onLogout }) => {
   const openAddModal = () => {
     setIsEditMode(false);
     setEditingId(null);
-    setFormData({ ...initialForm, branchId: branches[0]?.id || '' });
+    setFormData({ ...initialForm, branchId: branches.length > 0 ? branches[0].id : '' });
     setImagePreview(null);
     setShowModal(true);
+    setError(''); // Clear previous errors
   };
 
   const openEditModal = (product: Product) => {
@@ -100,13 +101,57 @@ const OwnerProducts: React.FC<Props> = ({ user, onLogout }) => {
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Updated limit to 20MB (20 * 1024 * 1024 bytes)
-      if (file.size > 20 * 1024 * 1024) return setError('Ukuran gambar maksimal 20MB');
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        return setError('Hanya file gambar yang diperbolehkan');
+      }
+
+      // Max file size 5MB (initial check)
+      if (file.size > 5 * 1024 * 1024) {
+        return setError('Ukuran file terlalu besar (Maks 5MB)');
+      }
+
       const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64 = reader.result as string;
-        setImagePreview(base64);
-        setFormData(prev => ({ ...prev, imageUrl: base64 }));
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+
+          // Resize if too large (max 800px width/height)
+          const MAX_SIZE = 800;
+          if (width > height) {
+            if (width > MAX_SIZE) {
+              height *= MAX_SIZE / width;
+              width = MAX_SIZE;
+            }
+          } else {
+            if (height > MAX_SIZE) {
+              width *= MAX_SIZE / height;
+              height = MAX_SIZE;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, width, height);
+
+          // Compress to JPEG with 0.7 quality
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+
+          // Check final size (< 1MB recommended)
+          if (dataUrl.length > 1024 * 1024 * 1.5) { // ~1.5MB base64 string length
+            setError('Gambar masih terlalu besar setelah dikompresi. Gunakan gambar lain.');
+            return;
+          }
+
+          setImagePreview(dataUrl);
+          setFormData(prev => ({ ...prev, imageUrl: dataUrl }));
+          setError('');
+        };
+        img.src = event.target?.result as string;
       };
       reader.readAsDataURL(file);
     }
@@ -179,7 +224,7 @@ const OwnerProducts: React.FC<Props> = ({ user, onLogout }) => {
           <h1 className="text-3xl font-black text-slate-800 tracking-tighter italic uppercase">Katalog Produk</h1>
           <p className="text-slate-500 font-bold uppercase tracking-widest text-[10px] mt-1">Manual Inventory Control</p>
         </div>
-        <button 
+        <button
           onClick={openAddModal}
           className="bg-blue-600 text-white px-8 py-4 rounded-2xl flex items-center gap-3 font-black hover:bg-blue-700 transition shadow-xl shadow-blue-600/20 active:scale-95 uppercase tracking-widest text-xs"
         >
@@ -190,9 +235,9 @@ const OwnerProducts: React.FC<Props> = ({ user, onLogout }) => {
       <div className="bg-white p-4 rounded-[2rem] border border-gray-100 shadow-sm mb-8 flex flex-col md:flex-row gap-4">
         <div className="flex-1 relative">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-          <input 
-            type="text" 
-            placeholder="Cari nama produk..." 
+          <input
+            type="text"
+            placeholder="Cari nama produk..."
             className="w-full bg-slate-50 border-none rounded-xl py-3 pl-12 pr-4 text-sm font-bold text-slate-600 focus:ring-2 focus:ring-blue-500 transition"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
@@ -200,7 +245,7 @@ const OwnerProducts: React.FC<Props> = ({ user, onLogout }) => {
         </div>
         <div className="flex items-center gap-3">
           <Filter size={18} className="text-slate-400" />
-          <select 
+          <select
             className="bg-slate-50 border-none rounded-xl py-3 px-4 text-sm font-black text-slate-600 focus:ring-2 focus:ring-blue-500 transition cursor-pointer"
             value={filterBranch}
             onChange={e => setFilterBranch(e.target.value)}
@@ -289,10 +334,10 @@ const OwnerProducts: React.FC<Props> = ({ user, onLogout }) => {
             <div className="p-10">
               <div className="flex justify-between items-start mb-10">
                 <div>
-                   <h2 className="text-3xl font-black text-slate-800 tracking-tighter italic uppercase">
-                     {isEditMode ? 'Edit Data Produk' : 'Tambah Produk Manual'}
-                   </h2>
-                   <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Lengkapi data finansial & stok dengan benar.</p>
+                  <h2 className="text-3xl font-black text-slate-800 tracking-tighter italic uppercase">
+                    {isEditMode ? 'Edit Data Produk' : 'Tambah Produk Manual'}
+                  </h2>
+                  <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Lengkapi data finansial & stok dengan benar.</p>
                 </div>
                 <button onClick={() => setShowModal(false)} className="p-3 bg-slate-50 text-slate-300 rounded-full hover:bg-rose-50 hover:text-rose-500 transition"><X size={20} /></button>
               </div>
@@ -319,19 +364,19 @@ const OwnerProducts: React.FC<Props> = ({ user, onLogout }) => {
                 <div className="grid md:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Nama Produk *</label>
-                    <input required type="text" className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 font-bold text-slate-700 focus:ring-4 focus:ring-blue-500/10 transition" placeholder="Americano Cold Brew" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+                    <input required type="text" className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 font-bold text-slate-700 focus:ring-4 focus:ring-blue-500/10 transition" placeholder="Americano Cold Brew" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Kategori Produk *</label>
                     <div className="relative">
                       <Layers className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                      <input 
+                      <input
                         list="category-list"
-                        required 
+                        required
                         className="w-full bg-slate-50 border-none rounded-2xl py-4 pl-14 pr-6 font-bold text-slate-700 focus:ring-4 focus:ring-blue-500/10 transition"
                         placeholder="Pilih atau Ketik Kategori Baru"
                         value={formData.category}
-                        onChange={e => setFormData({...formData, category: e.target.value})}
+                        onChange={e => setFormData({ ...formData, category: e.target.value })}
                       />
                       <datalist id="category-list">
                         {categories.map(c => <option key={c.id} value={c.name} />)}
@@ -343,13 +388,14 @@ const OwnerProducts: React.FC<Props> = ({ user, onLogout }) => {
                 <div className="grid md:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Cabang Penjualan *</label>
-                    <select className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 font-bold text-slate-700 focus:ring-4 focus:ring-blue-500/10 transition cursor-pointer" value={formData.branchId} onChange={e => setFormData({...formData, branchId: e.target.value})}>
+                    <select required className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 font-bold text-slate-700 focus:ring-4 focus:ring-blue-500/10 transition cursor-pointer" value={formData.branchId} onChange={e => setFormData({ ...formData, branchId: e.target.value })}>
+                      {branches.length === 0 && <option value="" disabled>Belum ada cabang</option>}
                       {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                     </select>
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Stok Awal Fisik *</label>
-                    <input required type="number" className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 font-bold text-slate-700 focus:ring-4 focus:ring-blue-500/10 transition" placeholder="0" value={formData.stock} onChange={e => setFormData({...formData, stock: e.target.value})} />
+                    <input required type="number" className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 font-bold text-slate-700 focus:ring-4 focus:ring-blue-500/10 transition" placeholder="0" value={formData.stock} onChange={e => setFormData({ ...formData, stock: e.target.value })} />
                   </div>
                 </div>
 
@@ -357,15 +403,15 @@ const OwnerProducts: React.FC<Props> = ({ user, onLogout }) => {
                   <div className="space-y-2">
                     <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Harga Modal (HPP) *</label>
                     <div className="relative">
-                       <span className="absolute left-6 top-1/2 -translate-y-1/2 font-black text-slate-300">Rp</span>
-                       <input required type="number" className="w-full bg-slate-50 border-none rounded-2xl py-4 pl-14 pr-6 font-bold text-slate-700 focus:ring-4 focus:ring-blue-500/10 transition" value={formData.costPrice} onChange={e => setFormData({...formData, costPrice: e.target.value})} />
+                      <span className="absolute left-6 top-1/2 -translate-y-1/2 font-black text-slate-300">Rp</span>
+                      <input required type="number" className="w-full bg-slate-50 border-none rounded-2xl py-4 pl-14 pr-6 font-bold text-slate-700 focus:ring-4 focus:ring-blue-500/10 transition" value={formData.costPrice} onChange={e => setFormData({ ...formData, costPrice: e.target.value })} />
                     </div>
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Harga Jual Konsumen *</label>
                     <div className="relative">
-                       <span className="absolute left-6 top-1/2 -translate-y-1/2 font-black text-slate-300">Rp</span>
-                       <input required type="number" className="w-full bg-slate-50 border-none rounded-2xl py-4 pl-14 pr-6 font-bold text-slate-700 focus:ring-4 focus:ring-blue-500/10 transition" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} />
+                      <span className="absolute left-6 top-1/2 -translate-y-1/2 font-black text-slate-300">Rp</span>
+                      <input required type="number" className="w-full bg-slate-50 border-none rounded-2xl py-4 pl-14 pr-6 font-bold text-slate-700 focus:ring-4 focus:ring-blue-500/10 transition" value={formData.price} onChange={e => setFormData({ ...formData, price: e.target.value })} />
                     </div>
                   </div>
                 </div>

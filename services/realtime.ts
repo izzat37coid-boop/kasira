@@ -37,6 +37,10 @@ class RealtimeEngine {
     });
   }
 
+  trigger(channelName: string, event: string, data: any) {
+    this.broadcast(channelName, event, data);
+  }
+
   stopListening(channelName: string, event: string) {
     if (this.channels[channelName]) {
       this.channels[channelName].unsubscribe();

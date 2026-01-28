@@ -10,14 +10,15 @@
   },
   "dependencies": {
     "@google/genai": "^1.35.0",
+    "@google/generative-ai": "^0.24.1",
     "@supabase/supabase-js": "^2.48.1",
+    "laravel-echo": "^1.16.1",
     "lucide-react": "^0.462.0",
+    "pusher-js": "^8.3.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.1.0",
-    "recharts": "^2.13.0",
-    "pusher-js": "^8.3.0",
-    "laravel-echo": "^1.16.1"
+    "recharts": "^2.13.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

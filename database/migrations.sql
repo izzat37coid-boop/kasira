@@ -246,16 +246,22 @@ DROP POLICY IF EXISTS "Users can view own profile" ON profiles;
 CREATE POLICY "Users can view own profile" ON profiles
   FOR SELECT USING (auth.uid() = id);
 
+-- Helper Function to prevent Infinite Recursion
+CREATE OR REPLACE FUNCTION check_is_owner()
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM profiles
+    WHERE id = auth.uid() AND role = 'owner'
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 -- Owners can view all profiles in their branches
 DROP POLICY IF EXISTS "Owners can view all profiles" ON profiles;
 CREATE POLICY "Owners can view all profiles" ON profiles
   FOR SELECT USING (
-    role = 'owner' AND auth.uid() = id
-    OR
-    EXISTS (
-      SELECT 1 FROM profiles p 
-      WHERE p.id = auth.uid() AND p.role = 'owner'
-    )
+    check_is_owner()
   );
 
 -- Users can update their own profile
@@ -267,6 +273,14 @@ CREATE POLICY "Users can update own profile" ON profiles
 DROP POLICY IF EXISTS "Allow profile creation" ON profiles;
 CREATE POLICY "Allow profile creation" ON profiles
   FOR INSERT WITH CHECK (auth.uid() = id);
+
+-- Owners can insert staff profiles (FIX for Staff Creation)
+DROP POLICY IF EXISTS "Owners can insert staff profiles" ON profiles;
+CREATE POLICY "Owners can insert staff profiles" ON profiles
+  FOR INSERT WITH CHECK (
+    role = 'kasir' AND 
+    EXISTS (SELECT 1 FROM branches WHERE id = branch_id AND owner_id = auth.uid())
+  );
 
 -- =====================================================
 -- BRANCHES POLICIES
@@ -287,8 +301,7 @@ CREATE POLICY "Owners can view own branches" ON branches
 DROP POLICY IF EXISTS "Owners can insert branches" ON branches;
 CREATE POLICY "Owners can insert branches" ON branches
   FOR INSERT WITH CHECK (
-    owner_id = auth.uid() AND
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'owner')
+    owner_id = auth.uid()
   );
 
 DROP POLICY IF EXISTS "Owners can update own branches" ON branches;
@@ -307,10 +320,10 @@ CREATE POLICY "Owners can delete own branches" ON branches
 DROP POLICY IF EXISTS "Users can view branch categories" ON categories;
 CREATE POLICY "Users can view branch categories" ON categories
   FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM branches b
-      INNER JOIN profiles p ON (p.branch_id = b.id OR b.owner_id = p.id)
-      WHERE p.id = auth.uid() AND b.id = categories.branch_id
+    branch_id IN (
+      SELECT branch_id FROM profiles WHERE id = auth.uid()
+      UNION
+      SELECT id FROM branches WHERE owner_id = auth.uid()
     )
   );
 
@@ -353,10 +366,10 @@ CREATE POLICY "Owners can delete categories" ON categories
 DROP POLICY IF EXISTS "Users can view branch products" ON products;
 CREATE POLICY "Users can view branch products" ON products
   FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM branches b
-      INNER JOIN profiles p ON (p.branch_id = b.id OR b.owner_id = p.id)
-      WHERE p.id = auth.uid() AND b.id = products.branch_id
+    branch_id IN (
+      SELECT branch_id FROM profiles WHERE id = auth.uid()
+      UNION
+      SELECT id FROM branches WHERE owner_id = auth.uid()
     )
   );
 
@@ -376,8 +389,7 @@ CREATE POLICY "Owners can update products" ON products
   FOR UPDATE USING (
     EXISTS (
       SELECT 1 FROM branches b
-      INNER JOIN profiles p ON b.owner_id = p.id
-      WHERE p.id = auth.uid() AND p.role = 'owner' AND b.id = branch_id
+      WHERE b.id = branch_id AND b.owner_id = auth.uid()
     )
   );
 
